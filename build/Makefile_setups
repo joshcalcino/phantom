@@ -176,6 +176,17 @@ ifeq ($(SETUP), disc)
     IND_TIMESTEPS=yes
 endif
 
+
+ifeq ($(SETUP), hexagons)
+#   locally isothermal gas disc
+    DISC_VISCOSITY=no
+    SETUPFILE= setup_disc.f90
+    ISOTHERMAL=yes
+    KNOWN_SETUP=yes
+    MULTIRUNFILE= multirun.f90
+    IND_TIMESTEPS=yes
+endif
+
 ifeq ($(SETUP), boilingplanets)
 #   locally isothermal gas disc with planet evolution
     DISC_VISCOSITY=yes

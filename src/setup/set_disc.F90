@@ -796,7 +796,8 @@ subroutine set_disc_velocities(npart_tot,npart_start_count,itype,G,star_m,aspin,
                                aspin_angle,clight,cs0,do_sigmapringle,p_index, &
                                q_index,gamma,R_in,rad,enc_m,smooth_sigma,xyzh,vxyzu,inclination,&
                                ecc_arr,a_arr)
- use externalforces, only:iext_einsteinprec
+ use externalforces, only:iext_einsteinprec, iext_brokenstarp
+ use extern_broken,  only:mass_eff,bmass1,bmass2,rbreak,delta_r
  use options,        only:iexternalforce
  use part,           only:gravity
  use dim,            only:gr
@@ -807,7 +808,7 @@ subroutine set_disc_velocities(npart_tot,npart_start_count,itype,G,star_m,aspin,
  real,    intent(in)    :: xyzh(:,:),inclination
  real,    intent(in)    :: ecc_arr(:),a_arr(:)
  real,    intent(inout) :: vxyzu(:,:)
- real :: term,term_pr,term_bh,det,vr,vphi,cs,R,phi,a_smj,ecc
+ real :: term,term_pr,term_bh,det,vr,vphi,cs,R,phi,a_smj,ecc,rl
  integer :: i,itable,ipart,ierr
  real :: rg,vkep
  logical :: isecc
@@ -894,6 +895,10 @@ subroutine set_disc_velocities(npart_tot,npart_start_count,itype,G,star_m,aspin,
           vkep = sqrt(G*star_m/a_smj)
           vphi=vkep*(1.+ecc*cos(phi))/sqrt(1.-ecc**2)
           vr = vkep*ecc*sin(phi)/sqrt(1.-ecc**2)
+       elseif (iexternalforce==iext_brokenstarp) then
+         rl = rbreak - 0.5*delta_r
+         vphi = sqrt(G*mass_eff(R, bmass1, bmass2, rl, delta_r)/R)
+         vr = 0.0
        else
           vphi = 0.5*(term_bh + sqrt(det))
           vr=0.

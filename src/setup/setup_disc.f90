@@ -99,8 +99,9 @@ module setup
                             maxdustlarge,maxdustsmall,compiled_with_mcfost
  use externalforces,   only:iext_star,iext_binary,iext_lensethirring,&
                             iext_einsteinprec,iext_corot_binary,iext_corotate,&
-                            update_externalforce
+                            update_externalforce,iext_brokenstarp
  use extern_binary,    only:mass2,accradius1,accradius2,ramp,surface_force,eps_soft1
+ use extern_broken,    only:rbreak,delta_r,bmass1,bmass2
  use fileutils,        only:make_tags_unique
  use growth,           only:ifrag,isnow,rsnow,Tsnow,vfragSI,vfraginSI,vfragoutSI,gsizemincgs
  use porosity,         only:iporosity
@@ -152,6 +153,9 @@ module setup
  real    :: bhspin,bhspinangle
  logical :: einst_prec
 
+!-- broken star potential
+ logical :: brokendisc
+ 
  !--stratification
  real    :: temp_atm0,temp_mid0
  real    :: z0_ref
@@ -392,6 +396,12 @@ subroutine set_default_options()!id)
  m2    = 1.
  accr1 = 1.
  accr2 = 1.
+
+!-- broken star potential
+ iexternalforce = iext_brokenstarp
+ rbreak = 10.
+ delta_r = 1.
+brokendisc = .false. 
 
  !--oblateness of main objects
  J2star = 0.
@@ -736,7 +746,13 @@ subroutine equation_of_state(gamma)
        endif
     else
        !--single disc
-       if (qindex(onlydisc)>= 0.) then
+       if (brokendisc) then
+          !--globally isothermal
+          ieos = 1
+          qindex = 0.
+          use_global_iso = .true.
+          print "(/,a)",' setting ieos=1 for globally isothermal disc'
+       elseif (qindex(onlydisc)>= 0.) then
           do i=1,maxdiscs
              !--eos around sink
              if (iuse_disc(i)) isink = i-1
@@ -867,7 +883,7 @@ end subroutine surface_density_profile
 !
 !--------------------------------------------------------------------------
 subroutine setup_central_objects(fileprefix)
- use externalforces,       only:mass1,accradius1
+ use externalforces,       only:mass1,accradius1,bmass1,bmass2,delta_r,rbreak
  use extern_lensethirring, only:blackhole_spin,blackhole_spin_angle
  use setbinary,            only:set_binary,get_flyby_elements
  use sethierarchical,      only:set_hierarchical,set_multiple
@@ -912,6 +928,15 @@ subroutine setup_central_objects(fileprefix)
        blackhole_spin       = bhspin
        blackhole_spin_angle = bhspinangle*deg_to_rad
        mcentral             = m1
+    case (4)
+       print "(/,a)",' Keplerian potential with discontinuity at rbreak'
+       print "(a,g10.3,a)",'   Inner mass:      ', m1,    trim(mass_unit)
+       print "(a,g10.3,a)",'   Outer mass:      ', m2,    trim(mass_unit)
+       print "(a,g10.3,a)",'   Break radius:    ', rbreak, trim(dist_unit)
+       print "(a,g10.3,a)",'   Delta r:         ', delta_r, trim(dist_unit)
+       brokendisc = .true.
+       bmass1     = m1
+       bmass2     = m2
     end select
     call update_externalforce(iexternalforce,tinitial,0.)
  case (1)
@@ -2279,7 +2304,8 @@ subroutine setup_interactive(id)
     call prompt('Which potential?'//new_line('A')// &
                ' 1=central point mass'//new_line('A')// &
                ' 2=binary potential'//new_line('A')// &
-               ' 3=spinning black hole'//new_line('A'),ipotential,1,3)
+               ' 3=spinning black hole'//new_line('A')// &
+               ' 4=broken star potential'//new_line('A'),ipotential,1,4)
     select case (ipotential)
     case (1)
        !--point mass
@@ -2320,6 +2346,17 @@ subroutine setup_interactive(id)
        accr1       = 30.
        bhspin      = 1.
        bhspinangle = 0.
+    case (4)
+       !--broken star potential
+       iexternalforce = iext_brokenstarp
+       m1       = 1.
+       m2       = 1.
+       accr1    = 1.
+       rbreak   = 10.
+       delta_r  = 1.
+       pindex   = 0.0
+       qindex   = 0.0
+      use_global_iso = .true.
     end select
  case (1)
     !--sink particle(s)
@@ -2845,6 +2882,12 @@ subroutine write_setupfile(filename)
        call write_inopt(accr1,'accr1','black hole accretion radius',iunit)
        call write_inopt(bhspin,'bhspin','black hole spin',iunit)
        call write_inopt(bhspinangle,'bhspinangle','black hole spin angle (deg)',iunit)
+    case (4)
+       !--keplerian potential with discontinuity at rbreak
+       call write_inopt(m1,'m1','inner mass',iunit)
+       call write_inopt(m2,'m2','outer mass',iunit)
+       call write_inopt(rbreak,'rbreak','break radius',iunit)
+       call write_inopt(delta_r,'delta_r','delta r',iunit)
     end select
  case (1)
     !--sink particle(s)
@@ -3259,7 +3302,7 @@ subroutine read_setupfile(filename,ierr)
  select case (icentral)
  case (0)
     !--external potential
-    call read_inopt(ipotential,'ipotential',db,min=1,max=3,errcount=nerr)
+    call read_inopt(ipotential,'ipotential',db,min=1,max=4,errcount=nerr)
     select case (ipotential)
     case (1)
        !--point mass
@@ -3294,6 +3337,13 @@ subroutine read_setupfile(filename,ierr)
        call read_inopt(accr1,'accr1',db,min=0.,errcount=nerr)
        call read_inopt(bhspin,'bhspin',db,min=0.,errcount=nerr)
        call read_inopt(bhspinangle,'bhspinangle',db,min=0.,errcount=nerr)
+    case (4)
+       !-- Broken potential
+       iexternalforce = iext_brokenstarp
+       call read_inopt(m1,'m1',db,min=0.,errcount=nerr)
+       call read_inopt(m2,'m2',db,min=0.,errcount=nerr)
+       call read_inopt(rbreak,'rbreak',db,errcount=nerr)  
+       call read_inopt(delta_r,'delta_r',db,errcount=nerr)  
     end select
  case (1)
     iexternalforce = 0

@@ -17,6 +17,7 @@ module externalforces
 !   - accradius1_hard : *hard accretion radius of central object*
 !   - eps_soft        : *softening length (Plummer) for central potential in code units*
 !   - mass1           : *mass of central object in code units*
+!   - mass2           : *secondary mass of central binary in code units*
 !
 ! :Dependencies: dump_utils, extern_Bfield, extern_binary, extern_corotate,
 !   extern_densprofile, extern_geopot, extern_gnewton, extern_gwinspiral,
@@ -24,6 +25,7 @@ module externalforces
 !   infile_utils, io, part, units
 !
  use extern_binary,        only:accradius1,mass1,accretedmass1,accretedmass2
+ use extern_broken,        only:bmass1,bmass2,delta_r,rbreak
  use extern_corotate,      only:omega_corotate  ! so public from this module
  use extern_lensethirring, only:a=>blackhole_spin
  implicit none
@@ -45,7 +47,7 @@ module externalforces
  real, public :: accradius1_hard = 0.
  logical, public :: extract_iextern_from_hdr = .false.
 
- public :: mass1,a
+ public :: mass1,a,bmass1,bmass2,delta_r,rbreak
 
  !
  ! enumerated list of external forces
@@ -67,12 +69,13 @@ module externalforces
    iext_gwinspiral    = 14, &
    iext_discgravity   = 15, &
    iext_corot_binary  = 16, &
-   iext_geopot        = 17
+   iext_geopot        = 17, &
+   iext_brokenstarp   = 18
 
  !
  ! Human-readable labels for these
  !
- integer, parameter, public  :: iexternalforce_max = 17
+ integer, parameter, public  :: iexternalforce_max = 18
  character(len=*), parameter, public :: externalforcetype(iexternalforce_max) = (/ &
     'star                 ', &
     'corotate             ', &
@@ -90,7 +93,8 @@ module externalforces
     'grav. wave inspiral  ', &
     'disc gravity         ', &
     'corotating binary    ', &
-    'geopotential model   '/)
+    'geopotential model   ', &
+    'broken star potential'/)
 
 contains
 !-----------------------------------------------------------------------
@@ -113,6 +117,7 @@ subroutine externalforce(iexternalforce,xi,yi,zi,hi,ti,fextxi,fextyi,fextzi,phi,
  use extern_staticsine,  only:staticsine_force
  use extern_gwinspiral,  only:get_gw_force_i
  use extern_geopot,      only:get_geopot_force,J2,spinvec
+ use extern_broken,      only:brokenstar_potential
  use units,              only:get_G_code
  use io,                 only:fatal
  use part,               only:rhoh,massoftype,igas
@@ -155,6 +160,12 @@ subroutine externalforce(iexternalforce,xi,yi,zi,hi,ti,fextxi,fextyi,fextzi,phi,
     if (iexternalforce==iext_geopot) then
        call get_geopot_force(xi,yi,zi,dr,dr3,accradius1,J2,spinvec,fextxi,fextyi,fextzi,phi)
     endif
+
+case(iext_brokenstarp)
+!
+!--Broken star potential
+!
+    call brokenstar_potential(xi,yi,zi,hi,ti,fextxi,fextyi,fextzi,phi)
 
  case(iext_corotate)
 !
@@ -565,7 +576,8 @@ subroutine accrete_particles(iexternalforce,xi,yi,zi,hi,mi,ti,accreted,i)
 
  accreted = .false.
  select case(iexternalforce)
- case(iext_star,iext_prdrag,iext_lensethirring,iext_einsteinprec,iext_gnewton)
+ case(iext_star,iext_prdrag,iext_lensethirring,&
+      iext_einsteinprec,iext_gnewton,iext_brokenstarp)
 
     r2 = xi*xi + yi*yi + zi*zi
     if (r2 < (accradius1)**2) accreted = .true.
@@ -593,7 +605,7 @@ pure logical function was_accreted(iexternalforce,hi)
 
  select case(iexternalforce)
  case(iext_star,iext_binary,iext_corot_binary,iext_prdrag,&
-      iext_lensethirring,iext_einsteinprec,iext_gnewton)
+      iext_lensethirring,iext_einsteinprec,iext_gnewton,iext_brokenstarp)
     ! An accreted particle is indicated by h < 0.
     ! Note less than, but not equal.
     ! (h=0 indicates dead MPI particle)
@@ -620,6 +632,7 @@ subroutine write_options_externalforces(iunit,iexternalforce)
  use extern_staticsine,    only:write_options_staticsine
  use extern_gwinspiral,    only:write_options_gwinspiral
  use extern_geopot,        only:write_options_geopot
+ use extern_broken,        only:write_options_extern_brokenstar
  integer, intent(in) :: iunit,iexternalforce
  character(len=80) :: string
 
@@ -663,6 +676,8 @@ subroutine write_options_externalforces(iunit,iexternalforce)
     call write_options_gwinspiral(iunit)
  case(iext_geopot)
     call write_options_geopot(iunit)
+ case(iext_brokenstarp)
+    call write_options_extern_brokenstar(iunit)
  end select
 
 end subroutine write_options_externalforces
@@ -729,6 +744,7 @@ subroutine read_options_externalforces(name,valstring,imatch,igotall,ierr,iexter
  use extern_staticsine,    only:read_options_staticsine
  use extern_gwinspiral,    only:read_options_gwinspiral
  use extern_geopot,        only:read_options_geopot
+ use extern_broken,        only:read_options_extern_brokenstar
  character(len=*), intent(in)    :: name,valstring
  logical,          intent(out)   :: imatch,igotall
  integer,          intent(out)   :: ierr
@@ -801,6 +817,8 @@ subroutine read_options_externalforces(name,valstring,imatch,igotall,ierr,iexter
        call read_options_gwinspiral(name,valstring,imatch,igotallgwinspiral,ierr)
     case(iext_geopot)
        call read_options_geopot(name,valstring,imatch,igotallgwinspiral,ierr)
+    case(iext_brokenstarp)
+       call read_options_extern_brokenstar(name,valstring,imatch,igotallgwinspiral,ierr)
     end select
  end select
  igotall = (ngot >= 1      .and. igotallcorotate   .and. &
@@ -859,7 +877,9 @@ subroutine initialise_externalforces(iexternalforce,ierr)
  end select
 
  select case(iexternalforce)
- case(iext_star,iext_binary,iext_corot_binary,iext_prdrag,iext_spiral,iext_lensethirring,iext_einsteinprec,iext_gnewton)
+ case(iext_star,iext_binary,iext_corot_binary,iext_prdrag, &
+      iext_spiral,iext_lensethirring,iext_einsteinprec,iext_gnewton, &
+      iext_brokenstarp)
     !
     !--check that G=1 in code units
     !

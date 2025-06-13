@@ -190,18 +190,17 @@ end function mag
 ! +
 !--------------------------------------------------------------------------------
 pure subroutine make_perp_frame(a, b, c)
-   use vectorutils, only:cross_product3D 
    real, intent(in)  :: a(3)     ! arbitrary non-zero vector
    real, intent(out) :: b(3), c(3)
-
    real :: inv_norm
+   real :: aa(3)
 
    ! normalise a 
    inv_norm = 1.0 / sqrt(sum(a*a))
-   c        = a * inv_norm          ! temporarily store â in c (a is intent in so we can't modify it)
-
+   aa        = a * inv_norm     
+   
    ! pick the largest component in magnitude
-   select case (maxloc(abs(c), dim=1))
+   select case (maxloc(abs(aa), dim=1))
    case (1)                          ! |a_x| is largest -> use y-axis
       b = (/ 0.0, 1.0, 0.0 /)
    case (2)                          ! |a_y| is largest -> use z-axis
@@ -211,12 +210,12 @@ pure subroutine make_perp_frame(a, b, c)
    end select
 
    ! make b perpendicular to a via Gram–Schmidt process (https://en.wikipedia.org/wiki/Gram%E2%80%93Schmidt_process)
-   b = b - dot_product(b, c) * c
+   b = b - dot_product(b, aa) * aa
    inv_norm = 1.0 / sqrt(sum(b*b))
    b = b * inv_norm
 
    ! c = a x b  
-   c = cross_product3D(c, b)
+   call cross_product3D(aa, b, c)
 end subroutine make_perp_frame
 
 end module vectorutils
