@@ -577,7 +577,7 @@ subroutine accrete_particles(iexternalforce,xi,yi,zi,hi,mi,ti,accreted,i)
  accreted = .false.
  select case(iexternalforce)
  case(iext_star,iext_prdrag,iext_lensethirring,&
-      iext_einsteinprec,iext_gnewton,iext_brokenstarp)
+      iext_einsteinprec,iext_gnewton)
 
     r2 = xi*xi + yi*yi + zi*zi
     if (r2 < (accradius1)**2) accreted = .true.
@@ -605,7 +605,7 @@ pure logical function was_accreted(iexternalforce,hi)
 
  select case(iexternalforce)
  case(iext_star,iext_binary,iext_corot_binary,iext_prdrag,&
-      iext_lensethirring,iext_einsteinprec,iext_gnewton,iext_brokenstarp)
+      iext_lensethirring,iext_einsteinprec,iext_gnewton)
     ! An accreted particle is indicated by h < 0.
     ! Note less than, but not equal.
     ! (h=0 indicates dead MPI particle)
