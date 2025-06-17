@@ -40,6 +40,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
              'y','=',xyzmh_ptmass(2,i),&
              'z','=',xyzmh_ptmass(3,i),&
              'mass','=',xyzmh_ptmass(4,i),&
+             'vx','=',vxyz_ptmass(1,i),&
+             'vy','=',vxyz_ptmass(2,i),&
+             'vz','=',vxyz_ptmass(3,i),&
              'h','=',xyzmh_ptmass(ihsoft,i),&
              'hacc','=',xyzmh_ptmass(ihacc,i),&
              'Lnuc','=',xyzmh_ptmass(ilum,i)
@@ -99,6 +102,25 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  reset_CM = .false.
  call prompt('Reset centre of mass?',reset_CM)
  if (reset_CM) call reset_centreofmass(npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
+
+ do i=1,nptmass
+    print "(a,1x,i4,a)",'Sink',i,':'
+    print "(7(a5,1x,a,1x,es24.16e3,/))",&
+             'x','=',xyzmh_ptmass(1,i),&
+             'y','=',xyzmh_ptmass(2,i),&
+             'z','=',xyzmh_ptmass(3,i),&
+             'mass','=',xyzmh_ptmass(4,i),&
+             'vx','=',vxyz_ptmass(1,i),&
+             'vy','=',vxyz_ptmass(2,i),&
+             'vz','=',vxyz_ptmass(3,i),&
+             'h','=',xyzmh_ptmass(ihsoft,i),&
+             'hacc','=',xyzmh_ptmass(ihacc,i),&
+             'Lnuc','=',xyzmh_ptmass(ilum,i)
+    if (i > 10) then
+       print*, "The rest of the sink particles are not displayed"
+       exit
+    endif
+ enddo
 
  return
 end subroutine modify_dump
