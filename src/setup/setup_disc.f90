@@ -751,7 +751,7 @@ subroutine equation_of_state(gamma)
  endif
 
  if ( any( ieos==(/3,6,7,13,14/) ) ) then
-    print "(/,a)",' Setting floor temperature to ', T_floor, ' K.'
+    print "(/,a,g0,a)",' Setting floor temperature to ', T_floor, ' K.'
     cs_min =  gmw*T_floor/(mass_proton_cgs/kboltz * unit_velocity**2)
  endif
 

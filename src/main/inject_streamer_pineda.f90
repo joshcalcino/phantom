@@ -13,19 +13,22 @@ module inject
 ! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
-!   - Mdot         : *mass injection rate, in Msun/yr (peak rate if imdot_func > 0)*
+!   Common:
+!   - Mdot         : *mass injection rate, in Msun/yr*
 !   - dust_frac    : *Dust fraction in smallest dust bin*
-!   - mdot_func    : *functional form of dM/dt(t) (0=const)*
-!   - omega        : *angular velocity of cloud stream originates from (s^-1)*
-!   - phi0         : *phi0 parameter from the Mendoza+09 streamer*
-!   - r0           : *r0 parameter from the Mendoza+09 streamer*
-!   - r_inj        : *distance from CoM stream is injected*
-!   - stream_width : *width of injected stream in au*
-!   - sym_stream   : *balance streamer angular momentum (0=no, 1=Lx,Ly, 2=Lx,Ly,Lz, 3=Lz)*
-!   - tend         : *end time of injection (negative for inf, in years)*
-!   - theta0       : *theta0 parameter from the Mendoza+09 streamer*
-!   - tstart       : *start time of injection (in years)*
-!   - vr_0         : *radial velocity of cloud stream originates from (km/s)*
+!   - mdot_func    : *functional form of dM/dt(t), 0=constant*
+!   - stream_model : *0=Mendoza/PIMS, 1=direct Cartesian state*
+!   - stream_width : *radius of injected stream in au*
+!   - sym_stream   : *balance streamer angular momentum*
+!   - tend         : *end time of injection, negative for infinite, in years*
+!   - tstart       : *start time of injection, in years*
+!
+!   Used only when stream_model = 0:
+!   - omega, r0, phi0, theta0, r_inj, vr_0
+!
+!   Used only when stream_model = 1:
+!   - x_stream, y_stream, z_stream
+!   - vx_stream, vy_stream, vz_stream
 !
 ! :Dependencies: dim, infile_utils, io, options, part, partinject, physcon,
 !   random, units, vectorutils
@@ -39,6 +42,7 @@ module inject
  real, private :: Mdot = 1e-7
  real, private :: Mdotcode = 0.
  integer, private :: imdot_func = 0
+ integer, private :: stream_model = 0
  integer, private :: sym_stream = 0
  real, private :: stream_width = 10.
  real, private :: r_inj = 100.
@@ -49,6 +53,14 @@ module inject
  real, private :: vr_0 = 1.5
  real, private :: tstart = 0.
  real, private :: tend = -1.0
+ real, private :: tstart_code = 0.
+ real, private :: tend_code = -1.0
+ real, private :: x_stream = -2414.
+ real, private :: y_stream = -2225.
+ real, private :: z_stream = 880.
+ real, private :: vx_stream = 0.35
+ real, private :: vy_stream = 0.0
+ real, private :: vz_stream = -0.21
  real, private :: dust_frac = 0.01
 
 contains
@@ -63,7 +75,17 @@ subroutine init_inject(ierr)
 !--convert mass injection rate to code units
 !
  Mdotcode = Mdot*(solarm/umass)/(years/utime)
+ tstart_code = tstart*(years/utime)
+ if (tend < 0.) then
+    tend_code = tend
+ else
+    tend_code = tend*(years/utime)
+ endif
  print*,' Mdot is ',Mdot,' Msun/yr, which is ',Mdotcode,' in code units',umass,utime
+ print*,' injection time window: ',tstart,' to ',tend,' yr = ',tstart_code,' to ',tend_code,' code units'
+ if (stream_model == 1) then
+    print*,' direct streamer state (au, km/s): ',x_stream,y_stream,z_stream, vx_stream,vy_stream,vz_stream
+ endif
 
 end subroutine init_inject
 !-----------------------------------------------------------------------
@@ -97,8 +119,12 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass, &
  real :: G_code, end_time
  integer :: ninject_target, ninjected, ipart, iseed
 
- if (tend < 0.) end_time = huge(time)
- if (time < tstart .or. time > end_time) return
+ if (tend_code < 0.) then
+    end_time = huge(time)
+ else
+    end_time = tend_code
+ endif
+ if (time < tstart_code .or. time > end_time) return
 
  mtot = 0.0
 
@@ -125,7 +151,7 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass, &
 
  ! work out resolution based on Mdot(t)
  if (imdot_func > 0) then
-    Mdot_now = Mdotfunc(time-tstart)
+    Mdot_now = Mdotfunc((time-tstart_code)*utime/years)
     Mdotcode = Mdot_now*(solarm/umass)/(years/utime)
  endif
 
@@ -139,8 +165,17 @@ subroutine inject_particles(time,dtlast,xyzh,vxyzu,xyzmh_ptmass,vxyz_ptmass, &
 
  ninjected = 0
 
- call mendoza_state(mtot, r0, omega_cu, theta0_rad, phi0_rad, vr_0_cu, &
-                  r_inj, xc,yc,zc, vxc,vyc,vzc )
+ if (stream_model == 1) then
+    xc = x_stream
+    yc = y_stream
+    zc = z_stream
+    vxc = (vx_stream*1.0e5) * utime / udist
+    vyc = (vy_stream*1.0e5) * utime / udist
+    vzc = (vz_stream*1.0e5) * utime / udist
+ else
+    call mendoza_state(mtot, r0, omega_cu, theta0_rad, phi0_rad, vr_0_cu, &
+                     r_inj, xc,yc,zc, vxc,vyc,vzc )
+ endif
 
  vt  = sqrt(vxc*vxc + vyc*vyc + vzc*vzc)
  ex  = (/ vxc, vyc, vzc /)/vt
@@ -257,18 +292,33 @@ subroutine write_options_inject(iunit)
 
  integer, intent(in) :: iunit
 
+ ! Common injection controls used by both streamer models
  call write_inopt(imdot_func,'mdot_func','functional form of dM/dt(t) (0=const)',iunit)
- call write_inopt(omega,'omega','angular velocity of cloud stream originates from (s^-1)',iunit)
- call write_inopt(r0, 'r0', 'r0 parameter from the Mendoza+09 streamer',iunit)
- call write_inopt(phi0, 'phi0', 'phi0 parameter from the Mendoza+09 streamer',iunit)
- call write_inopt(theta0, 'theta0', 'theta0 parameter from the Mendoza+09 streamer',iunit)
- call write_inopt(r_inj,'r_inj','distance from CoM stream is injected',iunit)
- call write_inopt(vr_0,'vr_0','radial velocity of cloud stream originates from (km/s)',iunit)
+ call write_inopt(stream_model,'stream_model', &
+                  'streamer kinematics (0=Mendoza/PIMS, 1=direct Cartesian state)',iunit)
  call write_inopt(Mdot,'Mdot','mass injection rate, in Msun/yr (peak rate if imdot_func > 0)',iunit)
- call write_inopt(stream_width,'stream_width','width of injected stream in au',iunit)
+ call write_inopt(stream_width,'stream_width','radius of injected stream in au',iunit)
  call write_inopt(sym_stream,'sym_stream','balance streamer angular momentum (0=no, 1=Lx,Ly, 2=Lx,Ly,Lz, 3=Lz)',iunit)
- call write_inopt(tstart,'tstart','start time of injection (in years)',iunit)
- call write_inopt(tend,'tend','end time of injection (negative for inf, in years)',iunit)
+ call write_inopt(tstart,'tstart','start time of injection in years',iunit)
+ call write_inopt(tend,'tend','end time of injection in years; negative means infinite',iunit)
+
+ ! Model-specific controls
+ if (stream_model == 0) then
+    call write_inopt(omega,'omega','angular velocity of cloud stream originates from (s^-1)',iunit)
+    call write_inopt(r0,'r0','r0 parameter from the Mendoza+09 streamer, in au',iunit)
+    call write_inopt(phi0,'phi0','phi0 parameter from the Mendoza+09 streamer, in degrees',iunit)
+    call write_inopt(theta0,'theta0','theta0 parameter from the Mendoza+09 streamer, in degrees',iunit)
+    call write_inopt(r_inj,'r_inj','distance from CoM where stream is injected, in au',iunit)
+    call write_inopt(vr_0,'vr_0','radial velocity of cloud stream origin, in km/s',iunit)
+ elseif (stream_model == 1) then
+    call write_inopt(x_stream,'x_stream','direct-state x/R.A. offset of injection point, in au',iunit)
+    call write_inopt(y_stream,'y_stream','direct-state y/Dec. offset of injection point, in au',iunit)
+    call write_inopt(z_stream,'z_stream','direct-state z/LOS offset of injection point, in au',iunit)
+    call write_inopt(vx_stream,'vx_stream','direct-state x/R.A. velocity, in km/s',iunit)
+    call write_inopt(vy_stream,'vy_stream','direct-state y/Dec. velocity, in km/s',iunit)
+    call write_inopt(vz_stream,'vz_stream','direct-state z/LOS velocity, in km/s',iunit)
+ endif
+
  if (use_dust) then
     if (use_dustfrac) then
        call write_inopt(dust_frac,'dust_frac','Dust fraction in smallest dust bin',iunit)
@@ -289,6 +339,7 @@ subroutine read_options_inject(db,nerr)
  integer,      intent(inout) :: nerr
 
  call read_inopt(imdot_func,'mdot_func',db,errcount=nerr,min=0)
+ call read_inopt(stream_model,'stream_model',db,errcount=nerr,min=0,max=1,default=stream_model)
  call read_inopt(omega,'omega',db,errcount=nerr,min=0.,default=omega)
  call read_inopt(r0, 'r0', db,errcount=nerr,min=0.,default=r0)
  call read_inopt(phi0, 'phi0', db,errcount=nerr,default=phi0)
@@ -300,6 +351,12 @@ subroutine read_options_inject(db,nerr)
  call read_inopt(sym_stream,'sym_stream',db,errcount=nerr,min=0,max=3,default=sym_stream)
  call read_inopt(tstart,'tstart',db,errcount=nerr,default=tstart)
  call read_inopt(tend,'tend',db,errcount=nerr,default=tend)
+ call read_inopt(x_stream,'x_stream',db,errcount=nerr,default=x_stream)
+ call read_inopt(y_stream,'y_stream',db,errcount=nerr,default=y_stream)
+ call read_inopt(z_stream,'z_stream',db,errcount=nerr,default=z_stream)
+ call read_inopt(vx_stream,'vx_stream',db,errcount=nerr,default=vx_stream)
+ call read_inopt(vy_stream,'vy_stream',db,errcount=nerr,default=vy_stream)
+ call read_inopt(vz_stream,'vz_stream',db,errcount=nerr,default=vz_stream)
  if (use_dust) then
     if (use_dustfrac) then
        call read_inopt(dust_frac,'dust_frac',db,errcount=nerr,default=dust_frac)
