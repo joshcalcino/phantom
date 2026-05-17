@@ -29,6 +29,7 @@ module eos
 !    20 = Ideal gas + radiation + various forms of recombination energy from HORMONE (Hirai et al., 2020)
 !    23 = Hypervelocity Impact of solids-fluids from Tillotson EOS (Tillotson 1962 - implemented by Brundage A. 2013
 !    24 = read tabulated eos (for use with icooling == 9)
+!    25 = two-phase locally isothermal/atomic warm neutral EOS
 !
 ! :References:
 !    Lodato & Pringle (2007)
@@ -47,6 +48,9 @@ module eos
 !   - ishock_heating     : *shock heating (0=off, 1=on)*
 !   - metallicity        : *metallicity*
 !   - mu                 : *mean molecular weight*
+!   - T_warm         : *temperature of low-density atomic warm neutral gas*
+!   - mu_warm        : *mean molecular weight of low-density atomic warm neutral gas*
+!   - rho_branch_cgs     : *density threshold below which gas uses atomic warm neutral EOS*
 !
 ! :Dependencies: dim, dump_utils, eos_HIIR, eos_barotropic, eos_gasradrec,
 !   eos_helmholtz, eos_idealplusrad, eos_mesa, eos_piecewise, eos_shen,
@@ -57,7 +61,7 @@ module eos
  use dim,           only:gr,do_radiation
  use eos_gasradrec, only:irecomb
  implicit none
- integer, parameter, public :: maxeos = 24
+ integer, parameter, public :: maxeos = 25
  real,               public :: polyk, polyk2, gamma
  real,               public :: qfacdisc = 0.75, qfacdisc2 = 0.75
  real,               public :: cs_min = 0.0
@@ -83,6 +87,9 @@ module eos
  integer, public :: ieos          = 1
  integer, public :: iopacity_type = 0      ! used for radiation
  real,    public :: gmw           = 2.381  ! default mean molecular weight
+ real,    public :: T_warm    = 1.42e3
+ real,    public :: mu_warm   = 1.17
+ real,    public :: rho_branch_cgs = 1.0e-19
  real,    public :: X_in          = 0.74   ! default metallicities
  real,    public :: Z_in          = 0.02   ! default metallicities
  logical, public :: use_var_comp  = .false. ! use variable composition
@@ -247,6 +254,24 @@ subroutine equationofstate(eos_type,ponrhoi,spsoundi,rhoi,xi,yi,zi,tempi,eni,gam
     ponrhoi = max(ponrhoi, cs_min*cs_min)
     spsoundi = sqrt(ponrhoi)
     tempi    = temperature_coef*mui*ponrhoi
+
+ case(25)
+!
+!--Two-phase EOS. Low-density gas is an atomic warm neutral pressure reservoir;
+!  high-density gas follows the locally isothermal disc law with cs_min.
+!
+    cgsrhoi = rhoi*unit_density
+    if (cgsrhoi < rho_branch_cgs) then
+       mui      = mu_warm
+       ponrhoi  = (kb_on_mh*T_warm/mui)/(unit_velocity*unit_velocity)
+       spsoundi = sqrt(ponrhoi)
+       tempi    = T_warm
+    else
+       ponrhoi  = polyk*(xi**2 + yi**2 + zi**2)**(-qfacdisc)
+       ponrhoi  = max(ponrhoi, cs_min*cs_min)
+       spsoundi = sqrt(ponrhoi)
+       tempi    = temperature_coef*mui*ponrhoi
+    endif
 
  case(4)
 !
@@ -1418,7 +1443,7 @@ logical function eos_requires_isothermal(ieos)
  integer, intent(in) :: ieos
 
  select case(ieos)
- case(1,3,6,7,8,13,14,21)
+ case(1,3,6,7,8,13,14,21,25)
     eos_requires_isothermal = .true.
  case default
     !case(2,5,4,10,11,12,15,16,17,20,22,23,24,9)
@@ -1524,6 +1549,10 @@ subroutine eosinfo(eos_type,iprint)
     endif
  case(3)
     write(iprint,"(/,a,f10.6,a,f10.6)") ' Locally isothermal eq of state (R_sph): cs^2_0 = ',polyk,' qfac = ',qfacdisc
+ case(25)
+    write(iprint,"(/,a,f10.6,a,f10.6)") ' Two-phase locally isothermal EOS: cs^2_0 = ',polyk,' qfac = ',qfacdisc
+    write(iprint,"(a,es10.3,a,f10.3,a,f10.3)") '  warm branch: rho < ',rho_branch_cgs, &
+         ' g cm^-3, T = ',T_warm,' K, mu = ',mu_warm
  case(5,17)
     if (maxvxyzu >= 4) then
        write(iprint,"(' Adiabatic equation of state: P = (gamma-1)*rho*u, where gamma & mu depend on the formation of H2')")
@@ -1586,6 +1615,12 @@ subroutine write_headeropts_eos(ieos,hdr,ierr)
     call add_to_rheader(z0,'z0',hdr,ierr)
  endif
 
+ if (ieos==25) then
+    call add_to_rheader(T_warm,'T_warm',hdr,ierr)
+    call add_to_rheader(mu_warm,'mu_warm',hdr,ierr)
+    call add_to_rheader(rho_branch_cgs,'rho_branch_cgs',hdr,ierr)
+ endif
+
 end subroutine write_headeropts_eos
 
 !-----------------------------------------------------------------------
@@ -1628,7 +1663,7 @@ subroutine read_headeropts_eos(ieos,hdr,ierr)
  endif
 
  ierr = 0
- if (ieos==3 .or. ieos==6 .or. ieos==7) then
+ if (ieos==3 .or. ieos==6 .or. ieos==7 .or. ieos==25) then
     if (qfacdisc <= tiny(qfacdisc)) then
        if (id==master) write(iprint,*) 'ERROR: qfacdisc <= 0'
        ierr = 2
@@ -1648,6 +1683,12 @@ subroutine read_headeropts_eos(ieos,hdr,ierr)
     else
        if (id==master .and. iverbose >= 0) write(iprint,*) 'qfacdisc2 = ',qfacdisc2
     endif
+ endif
+
+ if (ieos==25) then
+    call extract('T_warm',T_warm,hdr,ierr)
+    call extract('mu_warm',mu_warm,hdr,ierr)
+    call extract('rho_branch_cgs',rho_branch_cgs,hdr,ierr)
  endif
 
 end subroutine read_headeropts_eos
@@ -1692,6 +1733,10 @@ subroutine write_options_eos(iunit)
     endif
  case(23)
     call write_options_eos_tillotson(iunit)
+ case(25)
+    call write_inopt(T_warm,'T_warm','temperature of atomic warm neutral background in K',iunit)
+    call write_inopt(mu_warm,'mu_warm','mean molecular weight of atomic warm neutral background',iunit)
+    call write_inopt(rho_branch_cgs,'rho_branch_cgs','density threshold for warm branch in g cm^-3',iunit)
  end select
 
  if (.not.isothermal .and. eos_allows_shock_and_work(ieos)) then
@@ -1748,6 +1793,11 @@ subroutine read_options_eos(db,nerr)
  if (ieos== 9) call read_options_eos_piecewise(db,nerr)
  if (ieos==20) call read_options_eos_gasradrec(db,nerr)
  if (ieos==23) call read_options_eos_tillotson(db,nerr)
+ if (ieos==25) then
+    call read_inopt(T_warm,'T_warm',db,errcount=nerr,min=0.,default=T_warm)
+    call read_inopt(mu_warm,'mu_warm',db,errcount=nerr,min=0.,default=mu_warm)
+    call read_inopt(rho_branch_cgs,'rho_branch_cgs',db,errcount=nerr,min=0.,default=rho_branch_cgs)
+ endif
 
 end subroutine read_options_eos
 
@@ -1773,6 +1823,9 @@ subroutine set_defaults_eos
  C_ent              = 3.
  polyk2             = 0. ! only used for ieos=8
  use_var_comp = .false.  ! variable composition
+ T_warm         = 1.42e3
+ mu_warm        = 1.17
+ rho_branch_cgs     = 5.0e-19
 
 end subroutine set_defaults_eos
 
