@@ -86,11 +86,11 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  real    :: rho_cloud_cgs, rho_cloud, mu_cloud, r_equiv
  real    :: dustfrac_tmp
  real    :: incx,incy,incz
- logical :: lrhofunc,call_prompt,empty_sim
+ logical :: lrhofunc,call_prompt,empty_sim,using_modin,modin_exists
  character(len=20), parameter :: filevx = 'cube_v1.dat'
  character(len=20), parameter :: filevy = 'cube_v2.dat'
  character(len=20), parameter :: filevz = 'cube_v3.dat'
- character(len=120)           :: filex,filey,filez
+ character(len=120)           :: filex,filey,filez,modinfile,paramfile
  procedure(rho_func), pointer :: prhofunc
 
  r_close = 100.
@@ -136,6 +136,19 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  ! turn call_prompt to false if you want to run this as a script without prompts
  call_prompt = .true.
+ using_modin = .false.
+ call get_infall_filenames(modinfile,paramfile)
+
+ inquire(file=modinfile,exist=modin_exists)
+ if (modin_exists) then
+    call read_infallmodin(modinfile,in_shape,in_orbit,in_mass,r_in,r_a,r_init,r_close, &
+                          r_slope,r_soft,v_inf,b,b_frac,ecc,incx,incy,incz, &
+                          add_turbulence,rms_mach,tfact,rho_mode,cloud_control_mode,n_add,ierr)
+    if (ierr /= 0) call fatal('moddump_infall','errors reading '//modinfile,var='errors',ival=ierr)
+    call_prompt = .false.
+    using_modin = .true.
+    if (id==master) print "(/,2a,/)",' Reading moddump parameters from ', modinfile
+ endif
 
  if (npartoftype(igas) <= 0) then
     empty_sim = .true.
@@ -189,10 +202,11 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     if (call_prompt) then
        call prompt('Enter infall mass in Msun:', in_mass, 0.0)
     endif
+    if (n_add <= 0) call fatal('moddump_infall','n_add must be > 0 for empty simulations')
     pmass = in_mass/real(n_add)
  endif
 
- if (cloud_control_mode == 0 .or. cloud_control_mode == 1) then
+ if (cloud_control_mode == 0 .or. (cloud_control_mode == 1 .and. .not. using_modin)) then
     if (call_prompt) then
        call prompt('Enter infall mass in Msun:', in_mass, 0.0)
     endif
@@ -204,6 +218,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     ! if npartoftype(igas) is 0 and pmass is not set, we set it later
     if (call_prompt) then
        call prompt('Enter number of particles to add:', n_add, 0)
+    elseif (n_add <= 0 .and. pmass > 0.) then
+       n_add = int(in_mass/pmass)
     endif
  endif
 
@@ -223,7 +239,10 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  if (cloud_control_mode == 2) then
     ! size sets mass, we already set r_in, r_a, so get the mass
     in_mass = 0.01*(r_equiv/5000.)**2.3
+    if (pmass > 0.) n_add = int(in_mass/pmass)
  endif
+
+ if (n_add <= 0) call fatal('moddump_infall','number of particles to add must be > 0')
 
  vol_obj = (4.0/3.0)*pi*r_equiv**3
 
@@ -553,10 +572,10 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  endif
  write(*,*)  " ###### Added infall successfully ###### "
  if (id==master) then
-    open(unit=1,file='infall.infallparams',status='replace',form='formatted')
+    open(unit=1,file=paramfile,status='replace',form='formatted')
     call write_infallinfo(1,in_shape,in_orbit,in_mass,r_in,r_a,r_init,r_close, &
                           r_slope,r_soft,v_inf,b,b_frac,ecc,incx,incy,incz, &
-                          add_turbulence,rms_mach,tfact,rho_mode,cloud_control_mode)
+                          add_turbulence,rms_mach,tfact,rho_mode,cloud_control_mode,n_add)
     close(1)
  endif
  deallocate(xyzh_add,vxyzu_add)
@@ -570,12 +589,86 @@ real function rhofunc(r)
 
 end function rhofunc
 
+subroutine get_infall_filenames(modinfile,paramfile)
+ character(len=*), intent(out) :: modinfile,paramfile
+ character(len=120) :: arg,outprefix
+ integer :: i,nargs,npos,iloc
+
+ outprefix = 'infall'
+ nargs = command_argument_count()
+ npos = 0
+ do i = 1,nargs
+    call get_command_argument(i,arg)
+    if (len_trim(arg) <= 0) cycle
+    if (arg(1:1) == '-') cycle
+    npos = npos + 1
+    if (npos == 2) then
+       outprefix = trim(arg)
+       exit
+    endif
+ enddo
+
+ iloc = index(outprefix,'_0')
+ if (iloc > 1) outprefix = outprefix(1:iloc-1)
+ modinfile = trim(outprefix)//'.infall.modin'
+ paramfile = trim(outprefix)//'.infallparams'
+
+end subroutine get_infall_filenames
+
+subroutine read_infallmodin(filename,in_shape,in_orbit,in_mass,r_in,r_a,r_init,r_close, &
+                            r_slope,r_soft,v_inf,b,b_frac,ecc,incx,incy,incz, &
+                            add_turbulence,rms_mach,tfact,rho_mode,cloud_control_mode,n_add,nerr)
+ use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
+ character(len=*), intent(in) :: filename
+ integer, intent(inout) :: in_shape,in_orbit,add_turbulence,rho_mode,cloud_control_mode,n_add
+ integer, intent(out) :: nerr
+ real,    intent(inout) :: in_mass,r_in,r_a,r_init,r_close,r_slope,r_soft
+ real,    intent(inout) :: v_inf,b,b_frac,ecc,incx,incy,incz,rms_mach,tfact
+ type(inopts), allocatable :: db(:)
+ integer :: iunit,ierr
+
+ nerr = 0
+ iunit = 23
+ call open_db_from_file(db,filename,iunit,ierr)
+ if (ierr /= 0) then
+    nerr = nerr + 1
+    return
+ endif
+
+ call read_inopt(in_shape,'in_shape',db,errcount=nerr,min=0,max=1,default=in_shape)
+ call read_inopt(in_orbit,'in_orbit',db,errcount=nerr,min=0,max=1,default=in_orbit)
+ call read_inopt(rho_mode,'rho_mode',db,errcount=nerr,min=0,default=rho_mode)
+ call read_inopt(cloud_control_mode,'cloud_control_mode',db,errcount=nerr,min=0,max=2,default=cloud_control_mode)
+ call read_inopt(add_turbulence,'add_turbulence',db,errcount=nerr,min=0,max=1,default=add_turbulence)
+
+ call read_inopt(n_add,'n_add',db,errcount=nerr,min=0,default=n_add)
+ call read_inopt(in_mass,'in_mass',db,errcount=nerr,min=0.,default=in_mass)
+ call read_inopt(r_in,'r_in',db,errcount=nerr,min=0.,default=r_in)
+ call read_inopt(r_a,'r_a',db,errcount=nerr,min=0.,default=r_a)
+ call read_inopt(r_slope,'r_slope',db,errcount=nerr,min=0.,default=r_slope)
+ call read_inopt(r_soft,'r_soft',db,errcount=nerr,min=0.,default=r_soft)
+ call read_inopt(r_init,'r_init',db,errcount=nerr,min=0.,default=r_init)
+ call read_inopt(r_close,'r_close',db,errcount=nerr,min=0.,default=r_close)
+ call read_inopt(v_inf,'v_inf',db,errcount=nerr,min=0.,default=v_inf)
+ call read_inopt(b_frac,'b_frac',db,errcount=nerr,min=0.,default=b_frac)
+ call read_inopt(b,'b',db,errcount=nerr,min=0.,default=b)
+ call read_inopt(ecc,'ecc',db,errcount=nerr,min=0.,default=ecc)
+ call read_inopt(incx,'incx',db,errcount=nerr,default=incx)
+ call read_inopt(incy,'incy',db,errcount=nerr,default=incy)
+ call read_inopt(incz,'incz',db,errcount=nerr,default=incz)
+ call read_inopt(rms_mach,'rms_mach',db,errcount=nerr,min=0.,default=rms_mach)
+ call read_inopt(tfact,'tfact',db,errcount=nerr,min=0.,default=tfact)
+
+ call close_db(db)
+
+end subroutine read_infallmodin
+
 subroutine write_infallinfo(iunit,in_shape,in_orbit,in_mass,r_in,r_a,r_init,r_close, &
                             r_slope,r_soft,v_inf,b,b_frac,ecc,incx,incy,incz, &
-                            add_turbulence,rms_mach,tfact,rho_mode,cloud_control_mode)
+                            add_turbulence,rms_mach,tfact,rho_mode,cloud_control_mode,n_add)
  use infile_utils, only:write_inopt
  use physcon, only:pi
- integer, intent(in) :: iunit,in_shape,in_orbit,add_turbulence,rho_mode,cloud_control_mode
+ integer, intent(in) :: iunit,in_shape,in_orbit,add_turbulence,rho_mode,cloud_control_mode,n_add
  real,    intent(in) :: in_mass,r_in,r_a,r_init,r_close,r_slope,r_soft
  real,    intent(in) :: v_inf,b,b_frac,ecc,incx,incy,incz,rms_mach,tfact
  real :: rad_to_deg
@@ -588,6 +681,7 @@ subroutine write_infallinfo(iunit,in_shape,in_orbit,in_mass,r_in,r_a,r_init,r_cl
  call write_inopt(rho_mode,'rho_mode','density mode (0=current, 1=Dullemond Eq4/Eq5)',iunit)
  call write_inopt(cloud_control_mode,'cloud_control_mode',&
                   'cloud control mode (0=manual mass+size, 1=N sets size, 2=size sets mass)',iunit)
+ call write_inopt(n_add,'n_add','number of particles added',iunit)
  call write_inopt(in_mass,'in_mass','infall mass',iunit)
  call write_inopt(r_in,'r_in','radius of shape (or semi-minor axis)',iunit)
  if (in_shape==1) call write_inopt(r_a,'r_a','semi-major axis of ellipse',iunit)

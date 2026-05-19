@@ -48,8 +48,8 @@ module eos
 !   - ishock_heating     : *shock heating (0=off, 1=on)*
 !   - metallicity        : *metallicity*
 !   - mu                 : *mean molecular weight*
-!   - T_warm         : *temperature of low-density atomic warm neutral gas*
-!   - mu_warm        : *mean molecular weight of low-density atomic warm neutral gas*
+!   - T_warm             : *temperature of low-density atomic warm neutral gas*
+!   - mu_warm            : *mean molecular weight of low-density atomic warm neutral gas*
 !   - rho_branch_cgs     : *density threshold below which gas uses atomic warm neutral EOS*
 !
 ! :Dependencies: dim, dump_utils, eos_HIIR, eos_barotropic, eos_gasradrec,
