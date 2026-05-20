@@ -1006,10 +1006,10 @@ ifeq ($(SETUP), streamerdisc)
 endif
 
 ifeq ($(SETUP), infalltwophase)
-#   infalling stream setup with periodic warm molecular reservoir
+#   disc setup with optional periodic warm atomic neutral reservoir and infall injection
     DISC_VISCOSITY=yes
     PERIODIC=yes
-    SETUPFILE= setup_infall_twophase_disc.f90
+    SETUPFILE= setup_disc.f90
     ANALYSIS= analysis_disc.f90
     ISOTHERMAL=yes
     IND_TIMESTEPS=yes
