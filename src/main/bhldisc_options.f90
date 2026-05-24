@@ -62,10 +62,12 @@ end subroutine read_options_bhldisc_setup
 
 !-----------------------------------------------------------------------
 subroutine write_options_bhldisc_inject(iunit)
+ use infile_utils, only:write_inopt
  implicit none
  integer, intent(in) :: iunit
 
  call write_options_bhldisc_common(iunit)
+ call write_inopt(gas_mass_scale,'gas_mass_scale','BHL gas mass scale from setup',iunit)
 
 end subroutine write_options_bhldisc_inject
 
@@ -84,6 +86,7 @@ subroutine read_options_bhldisc_inject(db,nerr)
  call read_inopt(bhl_z_upstream,'bhl_z_upstream',db,errcount=nerr,min=epsilon(0.))
  call read_inopt(bhl_z_downstream,'bhl_z_downstream',db,errcount=nerr,min=epsilon(0.))
  call read_inopt(bhl_initial_layers,'bhl_initial_layers',db,errcount=nerr,min=0)
+ call read_inopt(gas_mass_scale,'gas_mass_scale',db,min=tiny(0.),errcount=nerr,default=gas_mass_scale)
 
 end subroutine read_options_bhldisc_inject
 

@@ -8,6 +8,7 @@ module inject
 !
  use bhldisc_options, only:bhl_vinf,bhl_rhoinf,bhl_wind_dir,bhl_box_x,bhl_box_y, &
                            bhl_z_upstream,bhl_z_downstream,bhl_initial_layers, &
+                           gas_mass_scale, &
                            write_options_bhldisc_inject,read_options_bhldisc_inject
  implicit none
  character(len=*), parameter, public :: inject_type = 'BHLdisc'
@@ -47,7 +48,7 @@ subroutine init_inject(ierr)
  use units,     only:get_G_code, unit_density, unit_velocity
  implicit none
  integer, intent(out) :: ierr
- real :: pmass, element_volume, target_sep, area, mgrav, gcode
+ real :: pmass, pmass_lattice, rho_lattice_code, element_volume, target_sep, area, mgrav, gcode
  real :: r_bhl_old, xyzi(3), vxyzui(4)
  real :: zmid, zhalf_formal
  integer :: i, iter
@@ -71,6 +72,8 @@ subroutine init_inject(ierr)
  if (pmass <= 0.) then
     call fatal('inject_BHLdisc','massoftype(igas) must be set before injection')
  endif
+ if (gas_mass_scale <= 0.) call fatal('inject_BHLdisc','gas_mass_scale must be positive')
+ pmass_lattice = pmass/gas_mass_scale
 
  u_inf = 0.0
 
@@ -94,7 +97,8 @@ subroutine init_inject(ierr)
  z_ref = z_ref/mgrav
  gcode = get_G_code()
  if (unit_density <= 0.) call fatal('inject_BHLdisc','unit_density must be positive')
- rho_inf_code = bhl_rhoinf/unit_density
+ rho_lattice_code = bhl_rhoinf/unit_density
+ rho_inf_code = gas_mass_scale*rho_lattice_code
 
  r_bhl = 2.0*gcode*mgrav/v_inf_code**2
  vxyzui = 0.0
@@ -124,12 +128,13 @@ subroutine init_inject(ierr)
     z_out_code = z_ref - bhl_z_downstream*r_bhl
  endif
 
- element_volume = pmass/rho_inf_code
+ element_volume = pmass_lattice/rho_lattice_code
  target_sep = element_volume**(1.0/3.0)
  h_inf = hfact*target_sep
 
- ! Fill the x/y periodic rectangle with an integer lattice.  Then choose the
- ! z spacing so that dx*dy*dz = pmass/rho_inf exactly.
+ ! Fill the x/y periodic rectangle with an integer lattice.  The BHL gas mass
+ ! scale changes particle masses and density together, so it cancels out of the
+ ! wind particle count.
  nx_layer = max(1, nint(box_x_code/target_sep))
  ny_layer = max(1, nint(box_y_code/target_sep))
  dx_layer = box_x_code/real(nx_layer)
@@ -160,7 +165,8 @@ subroutine init_inject(ierr)
  print*, 'BHLdisc rectangular wind injection'
  print*, '  v_inf km/s, code; mach          = ', bhl_vinf, v_inf_code, mach_inf
  print*, '  EOS c_s km/s, code at inlet     = ', cs_inf*unit_velocity/km, cs_inf
- print*, '  rho_inf cgs, code               = ', bhl_rhoinf, rho_inf_code
+ print*, '  rho_inf cgs, scaled code        = ', bhl_rhoinf, rho_inf_code
+ print*, '  gas_mass_scale                  = ', gas_mass_scale
  print*, '  R_BHL=2GM/(v^2+c_s^2), ref xyz  = ', r_bhl, x_ref, y_ref, z_ref
  print*, '  u_inf, h_inf                    = ', u_inf, h_inf
  print*, '  x/y layer particles             = ', nx_layer, ny_layer
