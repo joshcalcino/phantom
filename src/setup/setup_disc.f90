@@ -29,6 +29,14 @@ module setup
 !   - Rout_sphere    : *Outer edge of sphere*
 !   - T_floor        : *The minimum temperature in the simulation (for any locally isothermal EOS).*
 !   - add_warm       : *add atomic warm neutral background gas*
+!   - bhl_box_x      : *periodic/injection box size in x [R_BHL]*
+!   - bhl_box_y      : *periodic/injection box size in y [R_BHL]*
+!   - bhl_initial_layers : *wind layers prefilled at t=0*
+!   - bhl_rhoinf     : *BHL ambient density in g cm^-3*
+!   - bhl_vinf       : *BHL wind speed in km/s*
+!   - bhl_wind_dir   : *+1 or -1 flow direction in z*
+!   - bhl_z_downstream : *outlet distance downstream of sink COM [R_BHL]*
+!   - bhl_z_upstream : *inlet distance upstream of sink COM [R_BHL]*
 !   - box_size       : *periodic box size in au*
 !   - accr1          : *single star accretion radius*
 !   - accr1a         : *single star accretion radius*
@@ -48,6 +56,7 @@ module setup
 !   - discstrat      : *stratify disc? (0=no,1=yes)*
 !   - einst_prec     : *include Einstein precession*
 !   - eos_file       : *Equation of state file for using lumdisc*
+!   - gas_mass_scale : *multiply all gas particle masses by this factor*
 !   - ipotential     : *potential (1=central point mass,*
 !   - istrat         : *temperature prescription (0=MAPS, 1=Dartois)*
 !   - k              : *Scaling factor of Keplerian rotational velocity*
@@ -98,7 +107,9 @@ module setup
                             update_externalforce
  use extern_binary,    only:mass2,accradius1,accradius2,ramp,surface_force,eps_soft1
  use fileutils,        only:make_tags_unique
+ use bhldisc_options,  only:gas_mass_scale,write_options_bhldisc_setup,read_options_bhldisc_setup
  use growth,           only:ifrag,isnow,rsnow,Tsnow,vfragSI,vfraginSI,vfragoutSI,gsizemincgs,iporosity
+ use inject,           only:inject_type
  use io,               only:master,warning,error,fatal
  use kernel,           only:hfact_default
  use options,          only:use_dustfrac,iexternalforce,use_hybrid,use_porosity
@@ -180,7 +191,6 @@ module setup
 
  real    :: R_in(maxdiscs),R_out(maxdiscs),R_ref(maxdiscs),R_c(maxdiscs)
  real    :: pindex(maxdiscs),disc_m(maxdiscs),sig_ref(maxdiscs),sig_norm(maxdiscs)
- real    :: gas_mass_scale
  real    :: T_bg,L_star(maxdiscs)
  real    :: qindex(maxdiscs),H_R(maxdiscs),T_floor
  real    :: posangl(maxdiscs),incl(maxdiscs)
@@ -321,7 +331,7 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  !--planet atmospheres
  call planet_atmosphere(id,npart,xyzh,vxyzu,npartoftype,gamma,hfact)
 
- call scale_gas_particle_mass(massoftype)
+ if (is_bhldisc_setup()) call scale_gas_particle_mass(massoftype)
 
  !--initialise dustprop for dust particles only
  call initialise_dustprop(npart)
@@ -439,8 +449,8 @@ end subroutine set_warm_neutral_box
 
 !--------------------------------------------------------------------------
 !
-! Apply a global scale factor to gas particle masses.  This leaves the
-! locally-isothermal sound-speed field unchanged and reduces gas back-reaction.
+! Apply the BHLdisc gas mass scale factor.  This leaves the locally-isothermal
+! sound-speed field unchanged and reduces gas back-reaction.
 !
 !--------------------------------------------------------------------------
 subroutine scale_gas_particle_mass(massoftype)
@@ -454,6 +464,14 @@ subroutine scale_gas_particle_mass(massoftype)
  write(*,"(/,a,g10.3)") 'Scaled gas particle masses by factor ', gas_mass_scale
 
 end subroutine scale_gas_particle_mass
+
+!--------------------------------------------------------------------------
+logical function is_bhldisc_setup()
+ implicit none
+
+ is_bhldisc_setup = (trim(inject_type) == 'BHLdisc')
+
+end function is_bhldisc_setup
 
 !--------------------------------------------------------------------------
 !
@@ -3197,7 +3215,6 @@ subroutine write_setupfile(filename)
        endif
        if (.not.done_alpha) then
           call write_inopt(alphaSS,'alphaSS','desired alphaSS (0 for minimal needed for shock capturing)',iunit)
-          call write_inopt(gas_mass_scale,'gas_mass_scale','multiply all gas particle masses by this factor',iunit)
           done_alpha = .true.
        endif
        !--dust disc
@@ -3254,6 +3271,7 @@ subroutine write_setupfile(filename)
     call write_inopt(rho_warm_cgs,'rho_warm_cgs','initial atomic warm neutral background density in g cm^-3',iunit)
     call write_inopt(rho_branch_cgs,'rho_branch_cgs','EOS density threshold for warm branch in g cm^-3',iunit)
  endif
+ if (is_bhldisc_setup()) call write_options_bhldisc_setup(iunit)
  !--sphere of gas around disc
  write(iunit,"(/,a)") '# set sphere around disc'
  call write_inopt(add_sphere,'add_sphere','add sphere around disc?',iunit)
@@ -3496,6 +3514,7 @@ subroutine read_setupfile(filename,ierr)
  call read_inopt(mu_warm,'mu_warm',db,min=0.,errcount=nerr,default=mu_warm)
  call read_inopt(rho_warm_cgs,'rho_warm_cgs',db,min=0.,errcount=nerr,default=rho_warm_cgs)
  call read_inopt(rho_branch_cgs,'rho_branch_cgs',db,min=0.,errcount=nerr,default=rho_branch_cgs)
+ if (is_bhldisc_setup()) call read_options_bhldisc_setup(db,nerr)
 
  call read_inopt(discstrat,'discstrat',db,errcount=nerr)
  call read_inopt(lumdisc,'lumdisc',db,default=0)
@@ -3689,7 +3708,6 @@ subroutine read_setupfile(filename,ierr)
     endif
  enddo
  if (any(iuse_disc)) call read_inopt(alphaSS,'alphaSS',db,min=0.,errcount=nerr)
- call read_inopt(gas_mass_scale,'gas_mass_scale',db,min=tiny(0.),errcount=nerr,default=gas_mass_scale)
 
  !--sphere around disc
  call read_inopt(add_sphere,'add_sphere',db,errcount=nerr)

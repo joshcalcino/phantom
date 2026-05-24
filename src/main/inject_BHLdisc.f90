@@ -6,26 +6,15 @@ module inject
 ! Pair this with setup_disc.f90.  The normal Phantom disc setup creates the
 ! sink(s) and disc.  This module injects/removes the ambient BHL wind.
 !
+ use bhldisc_options, only:bhl_vinf,bhl_rhoinf,bhl_wind_dir,bhl_box_x,bhl_box_y, &
+                           bhl_z_upstream,bhl_z_downstream,bhl_initial_layers, &
+                           write_options_bhldisc_inject,read_options_bhldisc_inject
  implicit none
  character(len=*), parameter, public :: inject_type = 'BHLdisc'
 
  public :: init_inject, inject_particles, write_options_inject, &
            read_options_inject, set_default_options_inject, &
            update_injected_par
-
- ! Wind state.  Speed is in km/s; density is in cgs.
- real,    public :: bhl_vinf     = 1.0
- real,    public :: bhl_rhoinf   = 3.0e-20
- integer, public :: bhl_wind_dir = 1       ! +1: z_in -> z_out; -1: z_in -> z_out
-
- ! Rectangular wind tunnel, in Bondi-Hoyle radii.
- real, public :: bhl_box_x = 8.0
- real, public :: bhl_box_y = 8.0
- real, public :: bhl_z_upstream   = 4.0
- real, public :: bhl_z_downstream = 4.0
-
- ! Number of layers to prefill at t=0
- integer, public :: bhl_initial_layers = 4
 
  private
  ! With PERIODIC=yes Phantom has some unconditional minimum-image sections.
@@ -298,36 +287,21 @@ end subroutine delete_outflow_particles
 
 !-----------------------------------------------------------------------
 subroutine write_options_inject(iunit)
- use infile_utils, only:write_inopt
  implicit none
  integer, intent(in) :: iunit
 
- call write_inopt(bhl_vinf,'bhl_vinf','BHL wind speed in km/s',iunit)
- call write_inopt(bhl_rhoinf,'bhl_rhoinf','BHL ambient density in g cm^-3',iunit)
- call write_inopt(bhl_wind_dir,'bhl_wind_dir','+1 or -1 flow direction in z',iunit)
- call write_inopt(bhl_box_x,'bhl_box_x','periodic/injection box size in x [R_BHL]',iunit)
- call write_inopt(bhl_box_y,'bhl_box_y','periodic/injection box size in y [R_BHL]',iunit)
- call write_inopt(bhl_z_upstream,'bhl_z_upstream','inlet distance upstream of sink COM [R_BHL]',iunit)
- call write_inopt(bhl_z_downstream,'bhl_z_downstream','outlet distance downstream of sink COM [R_BHL]',iunit)
- call write_inopt(bhl_initial_layers,'bhl_initial_layers','wind layers prefilled at t=0',iunit)
+ call write_options_bhldisc_inject(iunit)
 
 end subroutine write_options_inject
 
 !-----------------------------------------------------------------------
 subroutine read_options_inject(db,nerr)
- use infile_utils, only:inopts, read_inopt
+ use infile_utils, only:inopts
  implicit none
  type(inopts), intent(inout) :: db(:)
  integer,      intent(inout) :: nerr
 
- call read_inopt(bhl_vinf,'bhl_vinf',db,errcount=nerr,min=epsilon(0.))
- call read_inopt(bhl_rhoinf,'bhl_rhoinf',db,errcount=nerr,min=tiny(0.))
- call read_inopt(bhl_wind_dir,'bhl_wind_dir',db,errcount=nerr,min=-1,max=1)
- call read_inopt(bhl_box_x,'bhl_box_x',db,errcount=nerr,min=epsilon(0.))
- call read_inopt(bhl_box_y,'bhl_box_y',db,errcount=nerr,min=epsilon(0.))
- call read_inopt(bhl_z_upstream,'bhl_z_upstream',db,errcount=nerr,min=epsilon(0.))
- call read_inopt(bhl_z_downstream,'bhl_z_downstream',db,errcount=nerr,min=epsilon(0.))
- call read_inopt(bhl_initial_layers,'bhl_initial_layers',db,errcount=nerr,min=0)
+ call read_options_bhldisc_inject(db,nerr)
 
 end subroutine read_options_inject
 
