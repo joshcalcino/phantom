@@ -180,6 +180,7 @@ module setup
 
  real    :: R_in(maxdiscs),R_out(maxdiscs),R_ref(maxdiscs),R_c(maxdiscs)
  real    :: pindex(maxdiscs),disc_m(maxdiscs),sig_ref(maxdiscs),sig_norm(maxdiscs)
+ real    :: gas_mass_scale
  real    :: T_bg,L_star(maxdiscs)
  real    :: qindex(maxdiscs),H_R(maxdiscs),T_floor
  real    :: posangl(maxdiscs),incl(maxdiscs)
@@ -320,6 +321,8 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  !--planet atmospheres
  call planet_atmosphere(id,npart,xyzh,vxyzu,npartoftype,gamma,hfact)
 
+ call scale_gas_particle_mass(massoftype)
+
  !--initialise dustprop for dust particles only
  call initialise_dustprop(npart)
 
@@ -433,6 +436,24 @@ subroutine set_warm_neutral_box(id,npart,xyzh,vxyzu,npartoftype,massoftype,hfact
     write(*,"(/,a,i0,a,es10.3,a)") ' Added ',n_added,' atomic warm neutral particles at rho = ',rho_warm_cgs,' g cm^-3'
  endif
 end subroutine set_warm_neutral_box
+
+!--------------------------------------------------------------------------
+!
+! Apply a global scale factor to gas particle masses.  This leaves the
+! locally-isothermal sound-speed field unchanged and reduces gas back-reaction.
+!
+!--------------------------------------------------------------------------
+subroutine scale_gas_particle_mass(massoftype)
+ implicit none
+ real, intent(inout) :: massoftype(:)
+
+ if (gas_mass_scale <= 0.) call fatal('setup_disc','gas_mass_scale must be positive')
+ if (abs(gas_mass_scale - 1.0) <= epsilon(gas_mass_scale)) return
+
+ massoftype(igas) = gas_mass_scale*massoftype(igas)
+ write(*,"(/,a,g10.3)") 'Scaled gas particle masses by factor ', gas_mass_scale
+
+end subroutine scale_gas_particle_mass
 
 !--------------------------------------------------------------------------
 !
@@ -597,6 +618,7 @@ subroutine set_default_options()
  disc_m       = 0.05
  sig_norm     = 1.e-02
  sig_ref      = 1.e-02
+ gas_mass_scale = 1.0
  Q_min        = 1.0
  annulus_m    = 0.05
  R_inann      = 1.
@@ -848,6 +870,7 @@ subroutine equation_of_state(gamma)
              !--eos around sink
              if (iuse_disc(i)) isink = i-1
           enddo
+          if (icentral == 1 .and. nsinks == 1 .and. iuse_disc(1)) isink = 1
           !--locally isothermal
           if (isink /= 0 .and. isink /= 3) then ! isink == 3 special case, to be generalised
              ieos = 6
@@ -3174,6 +3197,7 @@ subroutine write_setupfile(filename)
        endif
        if (.not.done_alpha) then
           call write_inopt(alphaSS,'alphaSS','desired alphaSS (0 for minimal needed for shock capturing)',iunit)
+          call write_inopt(gas_mass_scale,'gas_mass_scale','multiply all gas particle masses by this factor',iunit)
           done_alpha = .true.
        endif
        !--dust disc
@@ -3665,6 +3689,7 @@ subroutine read_setupfile(filename,ierr)
     endif
  enddo
  if (any(iuse_disc)) call read_inopt(alphaSS,'alphaSS',db,min=0.,errcount=nerr)
+ call read_inopt(gas_mass_scale,'gas_mass_scale',db,min=tiny(0.),errcount=nerr,default=gas_mass_scale)
 
  !--sphere around disc
  call read_inopt(add_sphere,'add_sphere',db,errcount=nerr)

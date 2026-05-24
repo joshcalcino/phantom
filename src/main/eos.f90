@@ -1714,6 +1714,7 @@ subroutine write_options_eos(iunit)
  if (.not. (use_krome .or. eos_outputs_mu(ieos))) then
     call write_inopt(gmw,'mu','mean molecular weight',iunit)
  endif
+ if (ieos == 6) call write_inopt(isink,'isink','sink used as centre of locally isothermal EOS',iunit)
 
  select case(ieos)
  case(8)
@@ -1779,6 +1780,7 @@ subroutine read_options_eos(db,nerr)
  endif
 
  call read_inopt(gmw,'mu',db,errcount=nerr,min=0.,default=gmw)
+ if (ieos == 6) call read_inopt(isink,'isink',db,errcount=nerr,min=1,default=isink)
  call read_inopt(X_in,'X',db,errcount=nerr,min=0.,max=1.,default=X_in)
  call read_inopt(Z_in,'Z',db,errcount=nerr,min=0.,max=1.,default=Z_in)
  if (.not.isothermal .and. eos_allows_shock_and_work(ieos)) then
