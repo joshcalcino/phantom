@@ -347,6 +347,10 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
     call set_centreofmass(npart,xyzh,vxyzu)
  endif
 
+ if (periodic .and. .not.periodic_domain) then
+    call set_periodic_boundary_from_particles(npart,xyzh)
+ endif
+
  !--set tmax and dtmax
  call set_tmax_dtmax(fileprefix)
 
@@ -429,6 +433,63 @@ subroutine set_warm_neutral_box(id,npart,xyzh,vxyzu,npartoftype,massoftype,hfact
     write(*,"(/,a,i0,a,es10.3,a)") ' Added ',n_added,' atomic warm neutral particles at rho = ',rho_warm_cgs,' g cm^-3'
  endif
 end subroutine set_warm_neutral_box
+
+!--------------------------------------------------------------------------
+!
+! Set a setup-only periodic boundary large enough to contain the disc.
+! Runtime injectors can replace this boundary when the calculation starts.
+!
+!--------------------------------------------------------------------------
+subroutine set_periodic_boundary_from_particles(npart,xyzh)
+ use boundary, only:set_boundary,print_boundaries
+ implicit none
+ integer, intent(in) :: npart
+ real,    intent(in) :: xyzh(:,:)
+ real :: xminp,xmaxp,yminp,ymaxp,zminp,zmaxp
+ real :: dx,dy,dz,span,pad
+
+ if (npart <= 0) return
+
+ xminp = minval(xyzh(1,1:npart))
+ xmaxp = maxval(xyzh(1,1:npart))
+ yminp = minval(xyzh(2,1:npart))
+ ymaxp = maxval(xyzh(2,1:npart))
+ zminp = minval(xyzh(3,1:npart))
+ zmaxp = maxval(xyzh(3,1:npart))
+
+ dx = xmaxp - xminp
+ dy = ymaxp - yminp
+ dz = zmaxp - zminp
+ span = max(dx,dy,dz,1.0)
+ pad = 0.05*span
+
+ if (dx <= 0.) then
+    xminp = xminp - 0.5*span
+    xmaxp = xmaxp + 0.5*span
+ else
+    xminp = xminp - pad
+    xmaxp = xmaxp + pad
+ endif
+ if (dy <= 0.) then
+    yminp = yminp - 0.5*span
+    ymaxp = ymaxp + 0.5*span
+ else
+    yminp = yminp - pad
+    ymaxp = ymaxp + pad
+ endif
+ if (dz <= 0.) then
+    zminp = zminp - 0.5*span
+    zmaxp = zmaxp + 0.5*span
+ else
+    zminp = zminp - pad
+    zmaxp = zmaxp + pad
+ endif
+
+ call set_boundary(xminp,xmaxp,yminp,ymaxp,zminp,zmaxp)
+ write(*,"(/,a)") 'Periodic setup boundary set from disc particle extent.'
+ call print_boundaries(6,.true.)
+
+end subroutine set_periodic_boundary_from_particles
 
 !--------------------------------------------------------------------------
 !
@@ -2308,6 +2369,7 @@ end subroutine set_tmax_dtmax
 !--------------------------------------------------------------------------
 subroutine setup_interactive(id)
  use prompting,        only:prompt
+ use eos,              only:T_warm,mu_warm,rho_branch_cgs
  use set_dust_options, only:set_dust_interactive
  use sethierarchical,  only:set_hierarchical_default_options,get_hier_level_mass
  use sethierarchical,  only:hs,hierarchy,print_chess_logo,generate_hierarchy_string
@@ -2696,6 +2758,21 @@ subroutine setup_interactive(id)
        endif
     endif
  enddo
+
+ !--atomic warm neutral background
+ print "(/,a)",'==========================='
+ print "(a)",  '+++  OPTIONAL BACKGROUND +++'
+ print "(a)",  '==========================='
+ call prompt('Do you want to add atomic warm neutral background gas?',add_warm)
+ if (add_warm) then
+    periodic_domain = .true.
+    call prompt('Use a finite periodic computational domain for the warm background?',periodic_domain)
+    if (periodic_domain) call prompt('Enter periodic cube side length in au',box_size,0.)
+    call prompt('Enter warm background temperature in K',T_warm,0.)
+    call prompt('Enter warm background mean molecular weight',mu_warm,0.)
+    call prompt('Enter warm background density in g/cm^3',rho_warm_cgs,0.)
+    call prompt('Enter EOS warm branch density threshold in g/cm^3',rho_branch_cgs,0.)
+ endif
 
  !--dust disc
  if (use_dust) then
@@ -3143,14 +3220,16 @@ subroutine write_setupfile(filename)
  write(iunit,"(/,a)") '# Minimum Temperature in the Simulation'
  call write_inopt(T_floor,'T_floor','The minimum temperature in the simulation (for any locally isothermal EOS).',iunit)
  !--atomic warm neutral periodic background
- write(iunit,"(/,a)") '# atomic warm neutral periodic background'
- call write_inopt(periodic_domain,'periodic_domain','use finite periodic computational domain?',iunit)
- call write_inopt(box_size,'box_size','user-specified periodic cube side length in au',iunit)
+ write(iunit,"(/,a)") '# optional atomic warm neutral background'
  call write_inopt(add_warm,'add_warm','add atomic warm neutral background gas?',iunit)
- call write_inopt(T_warm,'T_warm','temperature of atomic warm neutral background in K',iunit)
- call write_inopt(mu_warm,'mu_warm','mean molecular weight of atomic warm neutral background',iunit)
- call write_inopt(rho_warm_cgs,'rho_warm_cgs','initial atomic warm neutral background density in g cm^-3',iunit)
- call write_inopt(rho_branch_cgs,'rho_branch_cgs','EOS density threshold for warm branch in g cm^-3',iunit)
+ if (add_warm) then
+    call write_inopt(periodic_domain,'periodic_domain','use finite periodic computational domain?',iunit)
+    call write_inopt(box_size,'box_size','user-specified periodic cube side length in au',iunit)
+    call write_inopt(T_warm,'T_warm','temperature of atomic warm neutral background in K',iunit)
+    call write_inopt(mu_warm,'mu_warm','mean molecular weight of atomic warm neutral background',iunit)
+    call write_inopt(rho_warm_cgs,'rho_warm_cgs','initial atomic warm neutral background density in g cm^-3',iunit)
+    call write_inopt(rho_branch_cgs,'rho_branch_cgs','EOS density threshold for warm branch in g cm^-3',iunit)
+ endif
  !--sphere of gas around disc
  write(iunit,"(/,a)") '# set sphere around disc'
  call write_inopt(add_sphere,'add_sphere','add sphere around disc?',iunit)

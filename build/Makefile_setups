@@ -877,6 +877,18 @@ ifeq ($(SETUP), test)
     KNOWN_SETUP=yes
 endif
 
+
+ifeq ($(SETUP), BHLdisc)
+#   Normal Phantom disc setup plus rectangular BHL wind injection
+    SETUPFILE= setup_disc.f90
+    SRCINJECT= inject_BHLdisc.f90
+    PERIODIC=yes
+    ISOTHERMAL=yes
+    KNOWN_SETUP=yes
+    IND_TIMESTEPS=yes
+    ANALYSIS= analysis_disc.f90
+endif
+
 ifeq ($(SETUP), BHL)
 #   Bondi-Hoyle-Lyttleton setup
     SETUPFILE= setup_BHL.f90
