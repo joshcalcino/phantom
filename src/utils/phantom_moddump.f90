@@ -15,7 +15,7 @@ program phantommoddump
 ! :Usage: phantom_moddump dumpfilein dumpfileout [time] [outformat] --maxp=50000000
 !
 ! :Dependencies: checkconserved, checksetup, dim, eos, eos_stamatellos, io,
-!   memory, moddump, options, part, prompting, readwrite_dumps,
+!   memory, moddump, moddump_utils, options, part, prompting, readwrite_dumps,
 !   readwrite_infile, setBfield, setup_params, systemutils
 !
  use dim,             only:tagline,maxp_alloc
@@ -26,7 +26,8 @@ program phantommoddump
  use io,              only:set_io_unit_numbers,iprint,idisk1,warning,fatal,iwritein,id,master
  use readwrite_dumps, only:read_dump,write_fulldump,is_not_mhd
  use setBfield,       only:set_Bfield
- use moddump,         only:modify_dump,flags=>moddump_flags
+ use moddump,         only:modify_dump,read_moddump,write_moddump,flags=>moddump_flags
+ use moddump_utils,   only:get_moddump_options,moddump_dumpfile_in,moddump_time
  use readwrite_infile,only:write_infile,read_infile
  use options,         only:set_default_options
  use setup_params,    only:ihavesetupB
@@ -43,7 +44,7 @@ program phantommoddump
  logical :: idumpsphNG,iexist,ians
  integer, parameter          :: lenprefix = 120
  character(len=lenprefix)    :: fileprefix
- character(len=lenprefix+10) :: dumpfile,infile,evfile,logfile,progname
+ character(len=lenprefix+10) :: dumpfile,infile,evfile,logfile,progname,modfile
 
  call set_io_unit_numbers
  iprint = 6
@@ -168,6 +169,15 @@ program phantommoddump
  if (nwarn > 0) call warning('moddump','warnings from original setup',var='warnings',ival=nwarn)
  if (nerr > 0) call warning('moddump','ERRORS in original setup',var='errors',ival=nerr)
 !
+!--read the moddump parameter file (prefix.mod) if it exists, in the same
+!  way .setup files are handled; if it is incomplete this stops here, and
+!  if it is absent modify_dump prompts the user interactively
+!
+ modfile = trim(fileprefix)//'.mod'
+ moddump_dumpfile_in = dumpfilein   ! recorded in the .mod file as a comment
+ moddump_time        = timeout      ! recorded in the .mod file as a comment
+ call get_moddump_options(modfile,id==master,read_moddump,write_moddump)
+!
 !--modify the dump file
 !
  call modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
@@ -190,6 +200,11 @@ program phantommoddump
  endif
 
  call write_fulldump(timeout,dumpfileout,sphNG=idumpsphNG)
+!
+!--always (re)write the moddump parameter file, so a complete prefix.mod
+!  exists for next time (mirrors how .setup files are written)
+!
+ if (id==master) call write_moddump(modfile)
 !
 !--write a fresh input file, whether it exists or not
 !

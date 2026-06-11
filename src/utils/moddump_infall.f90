@@ -35,15 +35,24 @@ module moddump
 !   - v_inf          : *velocity at infinity (code units)*
 !
 ! :Dependencies: centreofmass, datafiles, dim, eos, infile_utils, io,
-!   kernel, options, part, partinject, physcon, prompting, setvfield,
-!   spherical, stretchmap, units, vectorutils, velfield
+!   kernel, moddump_utils, options, part, partinject, physcon, prompting,
+!   setvfield, spherical, stretchmap, units, vectorutils, velfield
 !
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
  integer, parameter :: nr = 200
- real              :: r_slope = 0.0
- real              :: r_soft = 100.0
+ ! runtime parameters, written to/read from the prefix.mod file.
+ ! defaults are set here (module-level), so they are in place before the
+ ! driver reads the .mod file via get_moddump_options - do NOT re-set them
+ ! at the top of modify_dump or the values read from file would be clobbered
+ integer :: in_shape = 1, in_orbit = 1, add_turbulence = 0
+ integer :: rho_mode = 0, cloud_control_mode = 0, n_add = 0
+ real    :: in_mass = 0.001, r_in = 250.0, r_a = 3500.0, r_init = 4000.0, r_close = 100.0
+ real    :: v_inf = 1.0, b = 0.0, b_frac = 1.0, ecc = 0.0
+ real    :: incx = 0.0, incy = 0.0, incz = 0.0, rms_mach = 1.0, tfact = 0.0
+ real    :: r_slope = 0.0
+ real    :: r_soft = 100.0
 
 contains
 
@@ -62,68 +71,48 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use vectorutils,    only:rotatevec
  use prompting,      only:prompt
  use centreofmass,   only:reset_centreofmass,get_total_angular_momentum
- use infile_utils,   only:open_db_from_file,inopts,read_inopt,close_db
  use eos,            only:ieos,isink,get_spsound
  use velfield,       only:set_velfield_from_cubes
  use datafiles,      only:find_phantom_datafile
  use setvfield,      only:normalise_vfield
+ use moddump_utils,  only:prompt_for_params
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
  real, allocatable :: xyzh_add(:,:),vxyzu_add(:,:)
- integer :: in_shape,in_orbit,ipart,i,n_add,np,add_turbulence,ierr
- integer :: rho_mode, cloud_control_mode
+ integer :: ipart,i,np,ierr
  integer(kind=8) :: nptot
- integer, parameter :: iunit = 23
- real    :: r_close,in_mass,pmass,delta,r_init,r_init_min,r_in,r_a,big_omega,tfact
- real    :: v_inf,b,b_frac,b_crit,ecc
+ real    :: pmass,delta,r_init_min,big_omega,b_crit
  real    :: vp(3), xp(3), rot_axis(3), rellipsoid(3)
  real    :: dma,n0,pf,m0,x0,y0,z0,r0,vx0,vy0,vz0,mtot,tiny_number,n1
  real    :: y1,x1,dx,x_prime,y_prime
- real    :: unit_velocity,G,rms_mach,rms_in,vol_obj,rhoi,spsound,factor,my_vrms,vxi,vyi,vzi
+ real    :: unit_velocity,G,rms_in,vol_obj,rhoi,spsound,factor,my_vrms,vxi,vyi,vzi
  real    :: v_inf_cgs,b_crit_cgs
  real    :: rho_cloud_cgs, rho_cloud, mu_cloud, r_equiv
  real    :: dustfrac_tmp
- real    :: incx,incy,incz
- logical :: lrhofunc,call_prompt,empty_sim
+ logical :: lrhofunc,empty_sim,using_modin
  character(len=20), parameter :: filevx = 'cube_v1.dat'
  character(len=20), parameter :: filevy = 'cube_v2.dat'
  character(len=20), parameter :: filevz = 'cube_v3.dat'
  character(len=120)           :: filex,filey,filez
  procedure(rho_func), pointer :: prhofunc
 
- r_close = 100.
- in_mass = 0.001
- r_in = 250.0
- r_a = 3500.
- r_init = 4000.0
- in_orbit = 1
- in_shape = 1
- rho_mode = 0
- cloud_control_mode = 0
- r_slope = 0.0
- incx = 0.
- incy = 0.
- incz = 0.
+ ! note: the .mod parameters (in_orbit, in_shape, in_mass, ...) are NOT
+ ! re-initialised here - their defaults live at module level so they survive
+ ! the read performed by the driver before this routine runs. Only local
+ ! working variables are initialised below.
  big_omega = 0.
  tiny_number = 1e-4
  lrhofunc = .false.
  empty_sim = .false.
- v_inf = 1.0
- b_frac = 1.0
- add_turbulence = 0
- rms_mach = 1.0
  ierr = 0
  my_vrms = 0.
- b = 0.
- ecc = 0.
  pf = 0.
  rho_cloud_cgs = 0.
  rho_cloud = 0.
  mu_cloud = 2.3
  r_equiv = 0.
- n_add = 0
 
  ! Gas particle properties
  pmass = massoftype(igas)
@@ -134,13 +123,15 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  vol_obj = 0.
 
- ! turn call_prompt to false if you want to run this as a script without prompts
- call_prompt = .true.
+ ! the prefix.mod parameter file is read by the driver (phantom_moddump) via
+ ! get_moddump_options before this routine is called; prompt_for_params tells
+ ! us whether to prompt interactively (no file found) or use the values read in
+ using_modin = .not. prompt_for_params
 
  if (npartoftype(igas) <= 0) then
     empty_sim = .true.
     pmass = 0.0
-    if (call_prompt) then
+    if (prompt_for_params) then
        write(*,*) "No gas particles detected"
        call prompt('Enter number of particles to add:', n_add, 0)
     endif
@@ -157,7 +148,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     mtot=sum(xyzmh_ptmass(4,:))
  endif
 
- if (call_prompt) then
+ if (prompt_for_params) then
     ! Prompt user for infall material shape
     call prompt('Enter the infall material shape (0=sphere, 1=ellipse)',in_shape,0,1)
 
@@ -176,7 +167,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  if ((cloud_control_mode == 1 .or. cloud_control_mode == 2) .and. empty_sim) then
     write(*,*) "WARNING: Simulation has no mass, massoftype(igas) is not set."
-    if (call_prompt) then
+    if (prompt_for_params) then
        write(*,*) "You must set massoftype(igas) to a non-zero value now."
        call prompt('Enter gas particle mass in Msun:', pmass, 0.0)
     endif
@@ -186,14 +177,15 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
        massoftype(igas) = pmass
     endif
  elseif (cloud_control_mode == 0 .and. empty_sim) then
-    if (call_prompt) then
+    if (prompt_for_params) then
        call prompt('Enter infall mass in Msun:', in_mass, 0.0)
     endif
+    if (n_add <= 0) call fatal('moddump_infall','n_add must be > 0 for empty simulations')
     pmass = in_mass/real(n_add)
  endif
 
- if (cloud_control_mode == 0 .or. cloud_control_mode == 1) then
-    if (call_prompt) then
+ if (cloud_control_mode == 0 .or. (cloud_control_mode == 1 .and. .not. using_modin)) then
+    if (prompt_for_params) then
        call prompt('Enter infall mass in Msun:', in_mass, 0.0)
     endif
     n_add = int(in_mass/pmass)
@@ -202,8 +194,10 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  if (cloud_control_mode == 1 .and. .not. empty_sim) then
     ! Ask how many particles user wants to add
     ! if npartoftype(igas) is 0 and pmass is not set, we set it later
-    if (call_prompt) then
+    if (prompt_for_params) then
        call prompt('Enter number of particles to add:', n_add, 0)
+    elseif (n_add <= 0 .and. pmass > 0.) then
+       n_add = int(in_mass/pmass)
     endif
  endif
 
@@ -223,12 +217,15 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  if (cloud_control_mode == 2) then
     ! size sets mass, we already set r_in, r_a, so get the mass
     in_mass = 0.01*(r_equiv/5000.)**2.3
+    if (pmass > 0.) n_add = int(in_mass/pmass)
  endif
+
+ if (n_add <= 0) call fatal('moddump_infall','number of particles to add must be > 0')
 
  vol_obj = (4.0/3.0)*pi*r_equiv**3
 
  if (cloud_control_mode == 0) then
-    if (call_prompt) then
+    if (prompt_for_params) then
        call prompt('Enter value of power-law density along radius:', r_slope, 0.0)
     endif
  else
@@ -238,17 +235,17 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  if (cloud_control_mode == 0 .and. r_slope > tiny_number) then
     prhofunc => rhofunc
     lrhofunc = .true.
-    if (call_prompt) then
+    if (prompt_for_params) then
        call prompt('Enter softening radius:', r_soft, 0.1)
     endif
  endif
 
  ! Prompt user for the infall material orbit
- if (call_prompt) then
+ if (prompt_for_params) then
     call prompt('Enter orbit type (0=parabolic, 1=hyperbolic)', in_orbit,0)
  endif
 
- if (call_prompt) then
+ if (prompt_for_params) then
     if (in_orbit == 0) then
        print*, "Parabolic orbit"
        call prompt('Enter closest approach in au:', r_close, 0.)
@@ -257,7 +254,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  if (in_orbit == 1) then
     write(*,*) "Hyperbolic orbit, see Dullemond+2019 for parameter definitions."
-    if (call_prompt) then
+    if (prompt_for_params) then
        call prompt('Enter cloud velocity at infinity, v_inf, in km/s:', v_inf, 0.0)
     endif
 
@@ -266,7 +263,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     b_crit = b_crit_cgs / au
     write(*,*) "Critical impact parameter, b_crit, is ", b_crit, " au"
 
-    if (call_prompt) then
+    if (prompt_for_params) then
        call prompt('Enter impact parameter b as a ratio of b_crit:', b_frac, 0.0)
     endif
     b = b_frac * b_crit
@@ -276,7 +273,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     write(*,*) "Closest approach of cloud center will be ", r_close, " au."
  endif
 
- if (call_prompt) then
+ if (prompt_for_params) then
     write(*,*) "Initial radial distance is centre of star/sphere or ellipse."
     if (in_shape == 0) then
        r_init_min = r_in + r_close
@@ -382,7 +379,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  endif
 
  !--Set velocities (from pre-made velocity cubes)
- if (call_prompt) then
+ if (prompt_for_params) then
     call prompt('Add turbulence to the gas?:', add_turbulence, 0, 1)
     if (add_turbulence == 1) then
        call prompt('Enter rms Mach number:', rms_mach, 0., 20.)
@@ -492,7 +489,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  endif
 
  ! Incline the infall
- if (call_prompt) then
+ if (prompt_for_params) then
     write(*,*) "Rotating the infalling gas."
     write(*,*) "Convention: clock-wise rotation in the xy-plane."
     call prompt('Enter rotation on x axis:', incx, -360., 360.)
@@ -552,13 +549,6 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     endif
  endif
  write(*,*)  " ###### Added infall successfully ###### "
- if (id==master) then
-    open(unit=1,file='infall.infallparams',status='replace',form='formatted')
-    call write_infallinfo(1,in_shape,in_orbit,in_mass,r_in,r_a,r_init,r_close, &
-                          r_slope,r_soft,v_inf,b,b_frac,ecc,incx,incy,incz, &
-                          add_turbulence,rms_mach,tfact,rho_mode,cloud_control_mode)
-    close(1)
- endif
  deallocate(xyzh_add,vxyzu_add)
 
 end subroutine modify_dump
@@ -570,24 +560,94 @@ real function rhofunc(r)
 
 end function rhofunc
 
-subroutine write_infallinfo(iunit,in_shape,in_orbit,in_mass,r_in,r_a,r_init,r_close, &
-                            r_slope,r_soft,v_inf,b,b_frac,ecc,incx,incy,incz, &
-                            add_turbulence,rms_mach,tfact,rho_mode,cloud_control_mode)
- use infile_utils, only:write_inopt
- use physcon, only:pi
- integer, intent(in) :: iunit,in_shape,in_orbit,add_turbulence,rho_mode,cloud_control_mode
- real,    intent(in) :: in_mass,r_in,r_a,r_init,r_close,r_slope,r_soft
- real,    intent(in) :: v_inf,b,b_frac,ecc,incx,incy,incz,rms_mach,tfact
+!----------------------------------------------------------------
+!+
+!  read the moddump parameters from the prefix.mod file; nerr
+!  counts missing or invalid options (so the caller can top up
+!  the file and ask the user to edit it)
+!+
+!----------------------------------------------------------------
+subroutine read_moddump(filename,nerr)
+ use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
+ character(len=*), intent(in) :: filename
+ integer, intent(out) :: nerr
+ type(inopts), allocatable :: db(:)
+ integer :: iunit,ierr
+
+ nerr = 0
+ iunit = 23
+ call open_db_from_file(db,filename,iunit,ierr)
+ if (ierr /= 0) then
+    nerr = nerr + 1
+    return
+ endif
+
+ ! control options: read these first as they determine which
+ ! dependent options below are required
+ call read_inopt(in_shape,'in_shape',db,errcount=nerr,min=0,max=1)
+ call read_inopt(in_orbit,'in_orbit',db,errcount=nerr,min=0,max=1)
+ call read_inopt(rho_mode,'rho_mode',db,errcount=nerr,min=0)
+ call read_inopt(cloud_control_mode,'cloud_control_mode',db,errcount=nerr,min=0,max=2)
+ call read_inopt(add_turbulence,'add_turbulence',db,errcount=nerr,min=0,max=1)
+
+ call read_inopt(n_add,'n_add',db,errcount=nerr,min=0)
+ call read_inopt(in_mass,'in_mass',db,errcount=nerr,min=0.)
+ call read_inopt(r_in,'r_in',db,errcount=nerr,min=0.)
+ if (in_shape==1) call read_inopt(r_a,'r_a',db,errcount=nerr,min=0.)
+
+ call read_inopt(r_slope,'r_slope',db,errcount=nerr,min=0.)
+ if (abs(r_slope) > 0.) call read_inopt(r_soft,'r_soft',db,errcount=nerr,min=0.)
+
+ call read_inopt(r_init,'r_init',db,errcount=nerr,min=0.)
+
+ if (in_orbit==0) call read_inopt(r_close,'r_close',db,errcount=nerr,min=0.)
+ if (in_orbit==1) then
+    call read_inopt(v_inf,'v_inf',db,errcount=nerr,min=0.)
+    call read_inopt(b_frac,'b_frac',db,errcount=nerr,min=0.)
+    call read_inopt(b,'b',db,errcount=nerr,min=0.)
+    call read_inopt(ecc,'ecc',db,errcount=nerr,min=0.)
+    call read_inopt(r_close,'r_close',db,errcount=nerr,min=0.)
+ endif
+
+ call read_inopt(incx,'incx',db,errcount=nerr)
+ call read_inopt(incy,'incy',db,errcount=nerr)
+ call read_inopt(incz,'incz',db,errcount=nerr)
+
+ if (add_turbulence==1) then
+    call read_inopt(rms_mach,'rms_mach',db,errcount=nerr,min=0.)
+    call read_inopt(tfact,'tfact',db,errcount=nerr,min=0.)
+ endif
+
+ call close_db(db)
+
+end subroutine read_moddump
+
+!----------------------------------------------------------------
+!+
+!  write the moddump parameters to the prefix.mod file
+!+
+!----------------------------------------------------------------
+subroutine write_moddump(filename)
+ use infile_utils,  only:write_inopt
+ use physcon,       only:pi
+ use moddump_utils, only:moddump_dumpfile_in,moddump_time
+ character(len=*), intent(in) :: filename
+ integer, parameter :: iunit = 23
  real :: rad_to_deg
 
  rad_to_deg = 180./pi
 
+ open(unit=iunit,file=filename,status='replace',form='formatted')
+ write(iunit,"(a)") '# moddump parameters file for moddump_infall'
+ write(iunit,"(2a)") '# input dump file modified: ',trim(moddump_dumpfile_in)
+ write(iunit,"(a,g0)") '# output time of modified dump: ',moddump_time
  write(iunit,"(/,a)") '# Infall parameters'
  call write_inopt(in_shape,'in_shape','infall material shape (0=sphere, 1=ellipse)',iunit)
  call write_inopt(in_orbit,'in_orbit','orbit type (0=parabolic, 1=hyperbolic)',iunit)
  call write_inopt(rho_mode,'rho_mode','density mode (0=current, 1=Dullemond Eq4/Eq5)',iunit)
  call write_inopt(cloud_control_mode,'cloud_control_mode',&
                   'cloud control mode (0=manual mass+size, 1=N sets size, 2=size sets mass)',iunit)
+ call write_inopt(n_add,'n_add','number of particles added',iunit)
  call write_inopt(in_mass,'in_mass','infall mass',iunit)
  call write_inopt(r_in,'r_in','radius of shape (or semi-minor axis)',iunit)
  if (in_shape==1) call write_inopt(r_a,'r_a','semi-major axis of ellipse',iunit)
@@ -616,6 +676,8 @@ subroutine write_infallinfo(iunit,in_shape,in_orbit,in_mass,r_in,r_a,r_init,r_cl
     call write_inopt(tfact,'tfact','tfact',iunit)
  endif
 
-end subroutine write_infallinfo
+ close(iunit)
+
+end subroutine write_moddump
 
 end module moddump

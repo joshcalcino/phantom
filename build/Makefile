@@ -781,7 +781,7 @@ ifndef MODDUMPBIN
 MODDUMPBIN=phantommoddump
 endif
 OBJMOD1 = ${OBJSETSTAR} eos_stamatellos.o velfield_fromcubes.o set_vfield.o\
-          set_disc.o set_Bfield.o utils_omp.o\
+          set_disc.o set_Bfield.o utils_omp.o moddump_utils.o\
 	  ${MODFILE:.f90=.o} phantom_moddump.o
 OBJMOD = ${OBJMOD1:.F90=.o}
 
