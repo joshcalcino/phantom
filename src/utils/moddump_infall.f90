@@ -18,12 +18,14 @@ module moddump
 !   - b_frac             : *impact parameter b as fraction of b_crit*
 !   - cloud_control_mode : *cloud control mode (0=manual mass+size, 1=N sets size, 2=size sets mass)*
 !   - ecc                : *eccentricity*
+!   - ieos_infall        : *eos to set after infall (6=isothermal about sink, 14=binary)*
 !   - in_mass            : *infall mass*
 !   - in_orbit           : *orbit type (0=parabolic, 1=hyperbolic)*
 !   - in_shape           : *infall material shape (0=sphere, 1=ellipse)*
 !   - incx               : *rotation on x axis (deg)*
 !   - incy               : *rotation on y axis (deg)*
 !   - incz               : *rotation on z axis (deg)*
+!   - isink              : *index of the sink the eos is centred on (for ieos_infall=6)*
 !   - m_gas              : *gas particle mass in Msun for empty simulations (0 = use existing)*
 !   - n_add              : *number of particles added*
 !   - r_a                : *semi-major axis of ellipse*
@@ -54,6 +56,7 @@ module moddump
  real    :: r_slope = 0.0
  real    :: r_soft = 100.0
  real    :: m_gas = 0.0
+ integer :: ieos_infall = 6
 
 contains
 
@@ -116,6 +119,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  y0 = 0.
  z0 = 0.
  vol_obj = 0.
+
+ ! default sink the eos is centred on (eos module variable, used when ieos_infall=6)
+ isink = 1
 
  ! read the prefix.moddump file; if it is absent prompt the user and write
  ! one (then stop), if it is incomplete top it up (then stop)
@@ -424,17 +430,21 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  enddo
 
- ! Update if ieos=3 since this will no longer make sense
+ ! The input disc typically uses ieos=3 (locally isothermal about the
+ ! origin), which no longer makes sense once infall has been added. Swap
+ ! it for the user-requested eos: 6 (locally isothermal about sink isink)
+ ! or 14 (binary).
  if (ieos==3) then
-    ! centred at 0,0,0, change to centred on isink=1 if nptmass == 1
-    if (nptmass==1) then
-       write(*,*) "WARNING: Changing ieos from 3 to 6."
+    select case (ieos_infall)
+    case (6)
+       if (isink > nptmass) call fatal('moddump_infall',&
+          'ieos_infall=6 requires isink <= nptmass')
+       write(*,*) "WARNING: Changing ieos from 3 to 6, centred on sink ", isink
        ieos = 6
-       isink = 1
-    elseif (nptmass==2) then
+    case (14)
        write(*,*) "WARNING: Changing ieos from 3 to 14."
        ieos = 14
-    endif
+    end select
  endif
  write(*,*)  " ###### Added infall successfully ###### "
  deallocate(xyzh_add,vxyzu_add)
@@ -455,6 +465,7 @@ end function rhofunc
 !----------------------------------------------------------------
 subroutine read_interactive_moddumpfile()
  use prompting, only:prompt
+ use eos,       only:isink
 
  call prompt('Enter the infall material shape (0=sphere, 1=ellipse)',in_shape,0,1)
  call prompt('Enter cloud control mode (0=manual mass+size (rho not fixed), 1=mass/n_add set radius (fixed rho), '&
@@ -501,6 +512,12 @@ subroutine read_interactive_moddumpfile()
  call prompt('Enter rotation on y axis (deg):', incy, -360., 360.)
  call prompt('Enter rotation on z axis (deg):', incz, -360., 360.)
 
+ call prompt('Enter eos to set after infall (6=isothermal about a sink, 14=binary):', ieos_infall)
+ do while (ieos_infall /= 6 .and. ieos_infall /= 14)
+    call prompt('Please enter either 6 or 14:', ieos_infall)
+ enddo
+ if (ieos_infall == 6) call prompt('Enter index of the sink the eos is centred on:', isink, 1)
+
 end subroutine read_interactive_moddumpfile
 
 !----------------------------------------------------------------
@@ -510,6 +527,7 @@ end subroutine read_interactive_moddumpfile
 !----------------------------------------------------------------
 subroutine write_moddumpfile(filename)
  use infile_utils, only:write_inopt,write_moddump_header
+ use eos,          only:isink
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 23
 
@@ -550,6 +568,9 @@ subroutine write_moddumpfile(filename)
     call write_inopt(tfact,'tfact','tfact',iunit)
  endif
 
+ call write_inopt(ieos_infall,'ieos_infall','eos to set after infall (6=isothermal about sink, 14=binary)',iunit)
+ if (ieos_infall==6) call write_inopt(isink,'isink','index of the sink the eos is centred on',iunit)
+
  close(iunit)
 
 end subroutine write_moddumpfile
@@ -563,6 +584,7 @@ end subroutine write_moddumpfile
 !----------------------------------------------------------------
 subroutine read_moddumpfile(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
+ use eos,          only:isink
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
  integer, parameter :: iunit = 23
@@ -609,6 +631,13 @@ subroutine read_moddumpfile(filename,ierr)
     call read_inopt(rms_mach,'rms_mach',db,errcount=nerr,min=0.)
     call read_inopt(tfact,'tfact',db,errcount=nerr,min=0.)
  endif
+
+ call read_inopt(ieos_infall,'ieos_infall',db,errcount=nerr)
+ if (ieos_infall /= 6 .and. ieos_infall /= 14) then
+    print*,'ERROR: ieos_infall must be 6 or 14'
+    nerr = nerr + 1
+ endif
+ if (ieos_infall==6) call read_inopt(isink,'isink',db,errcount=nerr,min=1)
 
  call close_db(db)
  if (nerr > 0) ierr = nerr
