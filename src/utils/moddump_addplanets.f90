@@ -12,32 +12,38 @@ module moddump
 !
 ! :Owner: Daniel Price
 !
-! :Runtime parameters: None
+! :Runtime parameters:
+!   - nplanets : *number of planets to add*
 !
-! :Dependencies: centreofmass, part, physcon, prompting, units
+! :Dependencies: centreofmass, infile_utils, io, part, physcon, prompting,
+!   units
 !
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
+
+ integer, parameter :: maxplanets = 9
+ character(len=*), dimension(maxplanets), parameter :: planets = &
+  (/'1','2','3','4','5','6','7','8','9' /)
+
+ integer :: nplanets = 1
+ real    :: mplanet(maxplanets), rplanet(maxplanets), accrplanet(maxplanets)
 
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use part,              only:nptmass,xyzmh_ptmass,vxyz_ptmass,igas,ihacc,ihsoft
- use prompting,         only:prompt
  use units,             only:umass,utime,udist,print_units
  use physcon,        only:au,solarm,jupiterm,pi,years
+ use io,                only:id,master,fileprefix
  use centreofmass,      only:reset_centreofmass,get_centreofmass
+ use infile_utils,      only:get_options
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- integer :: i,j,nplanets !,maxnplan
- integer, parameter :: maxplanets = 9
+ integer :: i,j,ierr
  real    :: phi,vphi,sinphi,cosphi,omega,r2,disc_m_within_r,star_m
  real    :: rsinkmass(maxplanets+1)
- real    :: mplanet(maxplanets),rplanet(maxplanets),accrplanet(maxplanets)
- character(len=*), dimension(maxplanets), parameter :: planets = &
-  (/'1','2','3','4','5','6','7','8','9' /)
 
  print "(1x,45('-'))"
  print "(1x,45('-'))"
@@ -67,16 +73,20 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  star_m = xyzmh_ptmass(4,1)
 ! print*,'Mass of central star: ', star_m
- nplanets = 1
- mplanet(:) = 0.001
- accrplanet(:) = 0.25*au/udist
- call prompt('Enter the number of planet you want to add: ', nplanets, 0, maxplanets-nptmass+1)
- do i=1,nplanets
-    rplanet(i) = 10.*i*au/udist
-    call prompt('Enter mass (code units) of planet '//trim(planets(i))//' :',mplanet(i),0.)
-    call prompt('Enter distance from the central star (code units) of planet '//trim(planets(i))//' :',rplanet(i),0.)
-    call prompt('Enter accretion radius (code units) of planet '//trim(planets(i))//' :',accrplanet(i),0.)
+ !
+ !--set defaults (unit-dependent, so done here before reading the file)
+ !
+ do i=1,maxplanets
+    mplanet(i)    = 0.001
+    rplanet(i)    = 10.*i*au/udist
+    accrplanet(i) = 0.25*au/udist
  enddo
+ !
+ !--read the moddump parameters (or write a template and stop)
+ !
+ call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
+                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
+ if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
 
  print "(a,i2,a)",' --------- added ',nplanets,' planets ------------'
  do i=1,nplanets
@@ -115,6 +125,71 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  call reset_centreofmass(npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
 
 end subroutine modify_dump
+
+!
+!---Interactively set the moddump parameters--------------------------------
+!
+subroutine read_interactive_moddumpfile()
+ use prompting, only:prompt
+ use part,      only:nptmass
+ integer :: i
+
+ call prompt('Enter the number of planet you want to add: ', nplanets, 0, maxplanets-nptmass+1)
+ do i=1,nplanets
+    call prompt('Enter mass (code units) of planet '//trim(planets(i))//' :',mplanet(i),0.)
+    call prompt('Enter distance from the central star (code units) of planet '//trim(planets(i))//' :',rplanet(i),0.)
+    call prompt('Enter accretion radius (code units) of planet '//trim(planets(i))//' :',accrplanet(i),0.)
+ enddo
+
+end subroutine read_interactive_moddumpfile
+
+!
+!---Write the moddump parameter file----------------------------------------
+!
+subroutine write_moddumpfile(filename)
+ use infile_utils, only:write_inopt,write_moddump_header
+ character(len=*), intent(in) :: filename
+ integer, parameter :: iunit = 20
+ integer :: i
+
+ print "(a)",' writing moddump params file '//trim(filename)
+ open(unit=iunit,file=filename,status='replace',form='formatted')
+ call write_moddump_header(iunit)
+ call write_inopt(nplanets,'nplanets','number of planets to add',iunit)
+ do i=1,nplanets
+    call write_inopt(mplanet(i),'mplanet'//trim(planets(i)),'mass of planet [code units]',iunit)
+    call write_inopt(rplanet(i),'rplanet'//trim(planets(i)),'distance from central star [code units]',iunit)
+    call write_inopt(accrplanet(i),'accrplanet'//trim(planets(i)),'accretion radius of planet [code units]',iunit)
+ enddo
+ close(iunit)
+
+end subroutine write_moddumpfile
+
+!
+!---Read the moddump parameter file-----------------------------------------
+!
+subroutine read_moddumpfile(filename,ierr)
+ use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
+ character(len=*), intent(in)  :: filename
+ integer,          intent(out) :: ierr
+ integer, parameter :: iunit = 21
+ integer :: nerr,i
+ type(inopts), allocatable :: db(:)
+
+ print "(a)",' reading moddump options from '//trim(filename)
+ nerr = 0
+ call open_db_from_file(db,filename,iunit,ierr)
+ if (ierr /= 0) return
+ call read_inopt(nplanets,'nplanets',db,min=0,max=maxplanets,errcount=nerr)
+ do i=1,nplanets
+    call read_inopt(mplanet(i),'mplanet'//trim(planets(i)),db,min=0.,errcount=nerr)
+    call read_inopt(rplanet(i),'rplanet'//trim(planets(i)),db,min=0.,errcount=nerr)
+    call read_inopt(accrplanet(i),'accrplanet'//trim(planets(i)),db,min=0.,errcount=nerr)
+ enddo
+ call close_db(db)
+ if (nerr > 0) ierr = nerr
+
+end subroutine read_moddumpfile
 
 end module moddump
 

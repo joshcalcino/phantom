@@ -12,37 +12,47 @@ module moddump
 !
 ! :Owner: Daniel Price
 !
-! :Runtime parameters: None
+! :Runtime parameters:
+!   - H_warp  : *warp width [code units]*
+!   - HonR    : *disc aspect ratio H/R (must match the setup)*
+!   - R_warp  : *warp radius [code units]*
+!   - beta    : *plasma beta for the added toroidal field*
+!   - incl    : *sine of inclination angle (0->1)*
+!   - posangl : *position angle [deg]*
 !
-! :Dependencies: part, physcon, setdisc
+! :Dependencies: infile_utils, io, part, physcon, prompting, setdisc
 !
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
+ ! runtime parameters (written to / read from the prefix.moddump file)
+ real :: HonR    = 0.02   ! disc aspect ratio H/R (must match the setup)
+ real :: R_warp  = 2.321  ! warp radius [code units]
+ real :: H_warp  = 0.0    ! warp width [code units]
+ real :: incl    = 0.5    ! sine of inclination angle (0->1)
+ real :: posangl = 0.0    ! position angle [deg]
+ real :: beta    = 10.0   ! plasma beta for the added toroidal field (MHD only)
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use setdisc, only:set_incline_or_warp
- use physcon, only:pi
- use part,    only:Bxyz,mhd,rhoh,igas
+ use setdisc,       only:set_incline_or_warp
+ use physcon,       only:pi
+ use part,          only:Bxyz,mhd,rhoh,igas
+ use io,            only:id,master,fileprefix
+ use infile_utils,  only:get_options
  integer, intent(in)    :: npartoftype(:)
  real,    intent(in)    :: massoftype(:)
  integer, intent(inout) :: npart
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- real :: R_warp,H_warp
- integer :: npart_start_count,npart_tot,ii,i
- real    :: beta,Bzero,pmassii,phi,incl,posangl
- real    :: r2,r,omega,cs,HonR,pressure,psimax
+ integer :: npart_start_count,npart_tot,ii,i,ierr
+ real    :: Bzero,pmassii,phi
+ real    :: r2,r,omega,cs,pressure,psimax
  real    :: vphiold2,vphiold,vadd,vphicorr2
 
-! ihavesetupB=.true.
- HonR = 0.02       ! Must check that this is the same as in setup_rndisc
-
-! Set warp parameters
- R_warp = 2.321!80.
- H_warp = 0.0!20.
- incl = 0.5 ! sine of inclination angle, 0->1
- posangl = 0.
+ call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
+                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
+ if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
 
 ! Similar to that in set_disc
  npart_start_count=1
@@ -67,7 +77,6 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
 ! Add magnetic field
  if (mhd) then
-    beta=10.
 
 ! Set up a magnetic field just in Bphi
     do ii = 1,npart
@@ -111,5 +120,59 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
 end subroutine modify_dump
 
-end module moddump
+subroutine read_interactive_moddumpfile()
+ use prompting, only:prompt
+ use part,      only:mhd
 
+ call prompt('Enter disc aspect ratio H/R (must match the setup)',HonR,0.)
+ call prompt('Enter warp radius R_warp (code units)',R_warp,0.)
+ call prompt('Enter warp width H_warp (code units)',H_warp,0.)
+ call prompt('Enter sine of inclination angle (0->1)',incl,0.,1.)
+ call prompt('Enter position angle (deg)',posangl)
+ if (mhd) call prompt('Enter plasma beta for added toroidal field',beta,0.)
+
+end subroutine read_interactive_moddumpfile
+
+subroutine read_moddumpfile(filename,ierr)
+ use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
+ use part,         only:mhd
+ character(len=*), intent(in)  :: filename
+ integer,          intent(out) :: ierr
+ integer, parameter :: iunit = 23
+ type(inopts), allocatable :: db(:)
+ integer :: nerr
+
+ nerr = 0
+ call open_db_from_file(db,filename,iunit,ierr)
+ if (ierr /= 0) return
+ call read_inopt(HonR,'HonR',db,errcount=nerr,min=0.)
+ call read_inopt(R_warp,'R_warp',db,errcount=nerr,min=0.)
+ call read_inopt(H_warp,'H_warp',db,errcount=nerr,min=0.)
+ call read_inopt(incl,'incl',db,errcount=nerr,min=0.,max=1.)
+ call read_inopt(posangl,'posangl',db,errcount=nerr)
+ if (mhd) call read_inopt(beta,'beta',db,errcount=nerr,min=0.)
+ call close_db(db)
+ if (nerr > 0) ierr = nerr
+
+end subroutine read_moddumpfile
+
+subroutine write_moddumpfile(filename)
+ use infile_utils, only:write_inopt,write_moddump_header
+ use part,         only:mhd
+ character(len=*), intent(in) :: filename
+ integer, parameter :: iunit = 23
+
+ open(unit=iunit,file=filename,status='replace',form='formatted')
+ call write_moddump_header(iunit)
+ write(iunit,"(/,a)") '# disc warp parameters'
+ call write_inopt(HonR,'HonR','disc aspect ratio H/R (must match the setup)',iunit)
+ call write_inopt(R_warp,'R_warp','warp radius [code units]',iunit)
+ call write_inopt(H_warp,'H_warp','warp width [code units]',iunit)
+ call write_inopt(incl,'incl','sine of inclination angle (0->1)',iunit)
+ call write_inopt(posangl,'posangl','position angle [deg]',iunit)
+ if (mhd) call write_inopt(beta,'beta','plasma beta for the added toroidal field',iunit)
+ close(iunit)
+
+end subroutine write_moddumpfile
+
+end module moddump

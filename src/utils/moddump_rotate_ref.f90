@@ -1,8 +1,8 @@
 !--------------------------------------------------------------------------!
 ! The Phantom Smoothed Particle Hydrodynamics code, by Daniel Price et al. !
-! Copyright (c) 2007-2023 The Authors (see AUTHORS)                        !
+! Copyright (c) 2007-2026 The Authors (see AUTHORS)                        !
 ! See LICENCE file for usage and distribution conditions                   !
-! http://phantomsph.bitbucket.io/                                          !
+! http://phantomsph.github.io/                                             !
 !--------------------------------------------------------------------------!
 module moddump
 !
@@ -12,11 +12,22 @@ module moddump
 !
 ! :Owner: Antoine Alaguero
 !
-! :Runtime parameters: None
+! :Runtime parameters:
+!   - Omega     : *current disc position angle [deg]*
+!   - incl      : *current disc inclination [deg]*
+!   - ref_Omega : *reference position angle [deg]*
+!   - ref_incl  : *reference inclination [deg]*
 !
-! :Dependencies: None
+! :Dependencies: infile_utils, io, part, physcon, prompting, vectorutils
 !
  implicit none
+ character(len=*), parameter, public :: moddump_flags = ''
+
+ ! runtime parameters (angles in degrees)
+ real :: incl      = 50.864   ! current disc inclination
+ real :: Omega     = 34.36    ! current disc position angle
+ real :: ref_incl  = 54.6     ! reference inclination (disc rotated into this plane)
+ real :: ref_Omega = 53.0     ! reference position angle
 
 contains
 
@@ -24,31 +35,23 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use physcon,              only:pi
  use part,                 only:xyzmh_ptmass,vxyz_ptmass,nptmass
  use vectorutils,          only:rotatevec
+ use io,                   only:id,master,fileprefix
+ use infile_utils,         only:get_options
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
  real                   :: alpha,gamma
- real                   :: ref_incl,ref_Omega
- real                   :: incl,Omega
  real                   :: a,b,c,d,e,f,g,h,i
  real                   :: temp_x,temp_y,temp_z
  real                   :: temp_vx,temp_vy,temp_vz
  real                   :: temp(3),temp_v(3)
- integer                :: j
+ integer                :: j,ierr
 
+ call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
+                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
+ if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
 
-
- ! Angles of the current disc in deg
- incl = 50.864
- Omega = 34.36 !38.5
-
- ! Reference angles in deg : the disc will be put into that plane
- ref_incl = 54.6
- ref_Omega = 53    ! Omega in code units
-
-
- 
  ! Rotation angles & coeffs
  alpha = (ref_incl - incl) *pi/180    !about x
  gamma = (ref_Omega - Omega) *pi/180     !about z
@@ -103,7 +106,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  enddo
 
  do j = 1,nptmass
-    
+
     temp(1) = xyzmh_ptmass(1,j)
     temp(2) = xyzmh_ptmass(2,j)
     temp(3) = xyzmh_ptmass(3,j)
@@ -152,5 +155,50 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  return
 end subroutine modify_dump
 
-end module moddump
+subroutine read_interactive_moddumpfile()
+ use prompting, only:prompt
 
+ call prompt('Enter current disc inclination (deg)',incl)
+ call prompt('Enter current disc position angle Omega (deg)',Omega)
+ call prompt('Enter reference inclination (deg)',ref_incl)
+ call prompt('Enter reference position angle Omega (deg)',ref_Omega)
+
+end subroutine read_interactive_moddumpfile
+
+subroutine read_moddumpfile(filename,ierr)
+ use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
+ character(len=*), intent(in)  :: filename
+ integer,          intent(out) :: ierr
+ integer, parameter :: iunit = 23
+ type(inopts), allocatable :: db(:)
+ integer :: nerr
+
+ nerr = 0
+ call open_db_from_file(db,filename,iunit,ierr)
+ if (ierr /= 0) return
+ call read_inopt(incl,'incl',db,errcount=nerr)
+ call read_inopt(Omega,'Omega',db,errcount=nerr)
+ call read_inopt(ref_incl,'ref_incl',db,errcount=nerr)
+ call read_inopt(ref_Omega,'ref_Omega',db,errcount=nerr)
+ call close_db(db)
+ if (nerr > 0) ierr = nerr
+
+end subroutine read_moddumpfile
+
+subroutine write_moddumpfile(filename)
+ use infile_utils, only:write_inopt,write_moddump_header
+ character(len=*), intent(in) :: filename
+ integer, parameter :: iunit = 23
+
+ open(unit=iunit,file=filename,status='replace',form='formatted')
+ call write_moddump_header(iunit)
+ write(iunit,"(/,a)") '# reference-frame rotation angles (degrees)'
+ call write_inopt(incl,'incl','current disc inclination [deg]',iunit)
+ call write_inopt(Omega,'Omega','current disc position angle [deg]',iunit)
+ call write_inopt(ref_incl,'ref_incl','reference inclination [deg]',iunit)
+ call write_inopt(ref_Omega,'ref_Omega','reference position angle [deg]',iunit)
+ close(iunit)
+
+end subroutine write_moddumpfile
+
+end module moddump

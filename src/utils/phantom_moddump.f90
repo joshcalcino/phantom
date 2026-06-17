@@ -14,19 +14,20 @@ program phantommoddump
 !
 ! :Usage: phantom_moddump dumpfilein dumpfileout [time] [outformat] --maxp=50000000
 !
-! :Dependencies: checkconserved, checksetup, dim, eos, eos_stamatellos, io,
-!   memory, moddump, options, part, prompting, readwrite_dumps,
-!   readwrite_infile, setBfield, setup_params, systemutils
+! :Dependencies: checkconserved, checksetup, dim, eos, eos_stamatellos,
+!   infile_utils, io, memory, moddump, options, part, prompting,
+!   readwrite_dumps, readwrite_infile, setBfield, setup_params, systemutils
 !
  use dim,             only:tagline,maxp_alloc
  use eos,             only:polyk,ieos
  use eos_stamatellos, only:init_coolra,finish_coolra
  use part,            only:xyzh,hfact,massoftype,vxyzu,npart,npartoftype, &
                            Bxyz,Bextx,Bexty,Bextz,mhd
- use io,              only:set_io_unit_numbers,iprint,idisk1,warning,fatal,iwritein,id,master
+ use io,              only:set_io_unit_numbers,iprint,idisk1,warning,fatal,iwritein,id,master,fileprefix
  use readwrite_dumps, only:read_dump,write_fulldump,is_not_mhd
  use setBfield,       only:set_Bfield
  use moddump,         only:modify_dump,flags=>moddump_flags
+ use infile_utils,    only:moddump_dumpfile_in,moddump_time
  use readwrite_infile,only:write_infile,read_infile
  use options,         only:set_default_options
  use setup_params,    only:ihavesetupB
@@ -42,7 +43,6 @@ program phantommoddump
  integer :: ierr,nerr,nwarn,iloc
  logical :: idumpsphNG,iexist,ians
  integer, parameter          :: lenprefix = 120
- character(len=lenprefix)    :: fileprefix
  character(len=lenprefix+10) :: dumpfile,infile,evfile,logfile,progname
 
  call set_io_unit_numbers
@@ -167,6 +167,12 @@ program phantommoddump
  call check_setup(nerr,nwarn,restart=.true.)
  if (nwarn > 0) call warning('moddump','warnings from original setup',var='warnings',ival=nwarn)
  if (nerr > 0) call warning('moddump','ERRORS in original setup',var='errors',ival=nerr)
+!
+!--record provenance for the .moddump parameter file (written by modify_dump,
+!  which handles its own prefix.moddump file via get_options)
+!
+ moddump_dumpfile_in = dumpfilein   ! recorded in the .moddump file as a comment
+ moddump_time        = timeout      ! recorded in the .moddump file as a comment
 !
 !--modify the dump file
 !
