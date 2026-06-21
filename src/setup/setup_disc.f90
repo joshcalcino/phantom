@@ -310,8 +310,8 @@ subroutine setpart(id,npart,npartoftype,xyzh,massoftype,vxyzu,polyk,gamma,hfact,
  !--setup equation of state
  call equation_of_state(gamma)
  if (add_warm) then
-    ieos = 25
-    print "(/,a)",' setting ieos=25 for two-phase locally isothermal/atomic warm neutral gas'
+    ieos = 26
+    print "(/,a)",' setting ieos=26 for two-phase locally isothermal/atomic warm neutral gas'
  endif
 
  !--set surface density profile based on setup options
