@@ -283,11 +283,13 @@ subroutine read_infile_and_initial_conditions(infile,logfile,evfile,dumpfile,tim
     call print_cpuinfo(iprint)
  endif
 
- if (id==master) call write_header(1,infile,evfile,logfile,dumpfile)
-
  ! read particle setup from dumpfile
  call read_dump(trim(dumpfile),time,hfactfile,idisk1,iprint,id,nprocs,ierr)
  if (ierr /= 0) call fatal('initial','error reading dumpfile')
+
+ ! echo the input file to the log after the dump is read, so dump-derived
+ ! options (e.g. use_dustfrac, ndusttypes) are printed correctly
+ if (id==master) call write_header(1,infile,evfile,logfile,dumpfile)
 
  if (gr) call update_metric(time)
 
