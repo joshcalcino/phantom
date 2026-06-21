@@ -21,7 +21,7 @@
 
 PHANTOM_VERSION_MAJOR=2026
 PHANTOM_VERSION_MINOR=0
-PHANTOM_VERSION_MICRO=0
+PHANTOM_VERSION_MICRO=1
 VERSION=$(PHANTOM_VERSION_MAJOR).$(PHANTOM_VERSION_MINOR).$(PHANTOM_VERSION_MICRO)
 
 KNOWN_SYSTEM=no
@@ -496,11 +496,6 @@ SRCEOS = eos_tillotson.f90 eos_barotropic.f90 eos_stratified.f90 eos_piecewise.f
 
 SRCRW_DUMPS= readwrite_dumps_common.f90 readwrite_dumps.f90
 
-ifeq ($(KROME), yes)
-    SRCKROME=krome.f90
-else
-    SRCKROME=
-endif
 
 SOURCES= physcon.f90 ${CONFIG} ${SRCKERNEL} io.F90 units.f90 geometry.f90 \
          mpi_dens.F90 mpi_force.F90 mpi_utils.F90 dtype_kdtree.F90 utils_omp.f90 utils_cpuinfo.f90 \
@@ -520,7 +515,7 @@ SOURCES= physcon.f90 ${CONFIG} ${SRCKERNEL} io.F90 units.f90 geometry.f90 \
          utils_deriv.f90 utils_implicit.f90 radiation_implicit.f90 ${SRCTURB} \
          grids_for_setup.f90\
          ${SRCINJECT_DEPS} wind_equations.f90 wind.F90  \
-         ${SRCKROME} memory.f90 ${SRCRW_DUMPS} ${SRCINJECT} injection.f90 \
+         krome.F90 memory.f90 ${SRCRW_DUMPS} ${SRCINJECT} injection.f90 \
          H2regions.f90 subgroup.f90 \
          quitdump.f90 dens.F90\
          ptmass.F90 force.F90 deriv.f90 ${SRCAPR} readwrite_infile.f90 energies.f90 sort_particles.f90 \
@@ -621,7 +616,7 @@ OBJDUMP= $(OBJDUMP1:.F90=.o)
 LIBSETUP=$(BINDIR)/libphantomsetup.a
 SRCLIBSETUP=physcon.f90 geometry.f90 utils_sort.f90 random.f90 utils_tables.f90 utils_vectors.f90 stretchmap.f90 \
             utils_orbits.f90 set_binary.f90 \
-            set_hierarchical_utils.f90 \
+            set_hierarchical_utils.f90 set_orbit.f90 \
             set_unifdis.f90 set_sphere.f90 set_plummer.f90 set_shock.f90 \
             set_dust.f90 libsetup.f90
 OBJLIBSETUP=${SRCLIBSETUP:.f90=.o}
@@ -646,7 +641,7 @@ SRCSETSTAR= prompting.f90 density_profiles.f90 readwrite_kepler.f90 readwrite_me
 SRCSETUP= utils_omp.f90 setup_params.f90 \
           ${SRCSETSTAR} set_dust_options.f90 set_units.f90 \
           set_slab.f90 utils_filenames.f90 utils_tables.f90 \
-          grids_for_setup.f90 set_disc.f90 set_orbit.f90 \
+          grids_for_setup.f90 set_disc.f90 \
           set_hierarchical.f90 \
           velfield_fromcubes.f90 set_vfield.f90 set_Bfield.f90 \
           ${SETUPFILE}
@@ -858,7 +853,7 @@ phantomanalysis: checksystem checkparams libphantom $(OBJA)
 	@echo ""
 	@echo "phantomanalysis: we live to serve you"
 	@echo ""
-	$(FC) $(FFLAGS) -o $(BINDIR)/$(ANALYSISBIN) $(OBJA) $(LDFLAGS) $(LIBS) $(LIBPHANTOM)
+	$(FC) $(FFLAGS) -o $(BINDIR)/$(ANALYSISBIN) $(OBJA) $(LIBPHANTOM) $(LDFLAGS) $(LIBS)
 
 analysis: phantomanalysis
 

@@ -23,6 +23,13 @@ module infile_utils
  public :: int_to_string
  public :: get_options
  public :: infile_exists
+ public :: write_moddump_header
+!
+! provenance recorded as comments in a moddump parameter (.moddump) file:
+! set by the phantommoddump driver, written by write_moddump_header
+!
+ character(len=120), public :: moddump_dumpfile_in = ''  ! input dump being modified
+ real,               public :: moddump_time = 0.         ! output time of the modified dump
 !
 ! generic interface write_inopt to write an input option of any type
 !
@@ -1533,6 +1540,21 @@ subroutine get_options_interactive(filename,iallow_write,ierr,read_pars,write_pa
  endif
 
 end subroutine get_options_interactive
+
+!--------------------------------------------------------------------
+!+
+!  write the standard comment header for a moddump parameter file:
+!  a record of which dump file was modified and at what output time
+!+
+!--------------------------------------------------------------------
+subroutine write_moddump_header(iunit)
+ integer, intent(in) :: iunit
+
+ write(iunit,"(a)")    '# moddump parameters file'
+ write(iunit,"(2a)")   '# input dump file modified: ',trim(moddump_dumpfile_in)
+ write(iunit,"(a,g0)") '# output time of modified dump: ',moddump_time
+
+end subroutine write_moddump_header
 
 !--------------------------------------------------------------------
 !+
