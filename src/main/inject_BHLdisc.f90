@@ -8,7 +8,7 @@ module inject
 !
  use bhldisc_options, only:bhl_vinf,bhl_rhoinf,bhl_wind_dir,bhl_box_x,bhl_box_y, &
                            bhl_z_upstream,bhl_z_downstream,bhl_initial_layers, &
-                           gas_mass_scale, &
+                           gas_mass_scale,bhl_dust_to_gas, &
                            write_options_bhldisc_inject,read_options_bhldisc_inject
  implicit none
  character(len=*), parameter, public :: inject_type = 'BHLdisc'
@@ -223,14 +223,17 @@ end subroutine inject_particles
 !-----------------------------------------------------------------------
 subroutine append_rectangular_layer(layer, time, npart, npartoftype, &
                                     xyzh, vxyzu)
- use part,       only:igas
+ use part,       only:igas,dustfrac
  use partinject, only:add_or_update_particle
+ use dim,        only:use_dust,maxdusttypes
+ use options,    only:use_dustfrac
+ use io,         only:fatal
  implicit none
  integer(kind=8), intent(in)    :: layer
  real,            intent(in)    :: time
  integer,         intent(inout) :: npart, npartoftype(:)
  real,            intent(inout) :: xyzh(:,:), vxyzu(:,:)
- integer :: ix, iy
+ integer :: ix, iy, ipart
  real :: xyzi(3), vxyzi(3), zlayer
 
  zlayer = z_in_code + vwind*(time - real(layer)*dt_layer)
@@ -242,9 +245,18 @@ subroutine append_rectangular_layer(layer, time, npart, npartoftype, &
     xyzi(2) = ymin_w + (real(iy)-0.5)*dy_layer
     do ix = 1, nx_layer
        xyzi(1) = xmin_w + (real(ix)-0.5)*dx_layer
+       ipart = npart+1
        call add_or_update_particle(igas, xyzi, vxyzi, h_inf, u_inf, &
-                                   npart+1, npart, npartoftype, &
+                                   ipart, npart, npartoftype, &
                                    xyzh, vxyzu)
+       ! seed the smallest dust bin in the (one-fluid) wind; two-fluid runs
+       ! (use_dustfrac=.false.) get pure gas and no dust
+       if (use_dust .and. use_dustfrac) then
+          if (ipart > size(dustfrac,2)) call fatal('inject_BHLdisc',&
+             'ipart exceeds dustfrac storage; increase maxp')
+          dustfrac(:,ipart) = 0.
+          if (maxdusttypes > 0) dustfrac(1,ipart) = bhl_dust_to_gas
+       endif
     enddo
  enddo
 
