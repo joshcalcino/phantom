@@ -37,7 +37,7 @@ module moddump
 !   - rho_mode           : *density mode (0=current, 1=Dullemond Eq4/Eq5)*
 !   - rms_mach           : *rms Mach number*
 !   - tfact              : *tfact*
-!   - v_inf              : *velocity at infinity (code units)*
+!   - v_inf              : *velocity at infinity [km/s]*
 !
 ! :Dependencies: centreofmass, datafiles, dim, eos, infile_utils, io,
 !   kernel, options, part, partinject, physcon, prompting, setvfield,
@@ -66,12 +66,12 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use options,        only:use_dustfrac
  use part,           only:igas,isdead_or_accreted,xyzmh_ptmass,nptmass,ihacc,ihsoft,gravity,&
                           dustfrac
- use units,          only:udist,utime,get_G_code,umass
+ use units,          only:udist,utime,get_G_code
  use io,             only:id,master,fatal,fileprefix
  use spherical,      only:set_sphere,set_ellipse
  use stretchmap,     only:rho_func
  use kernel,         only:hfact_default
- use physcon,        only:pi,mass_proton_cgs,gg,au
+ use physcon,        only:pi,mass_proton_cgs,au
  use vectorutils,    only:rotatevec
  use centreofmass,   only:reset_centreofmass,get_total_angular_momentum
  use eos,            only:ieos,isink,get_spsound
@@ -91,8 +91,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  real    :: dma,n0,pf,m0,x0,y0,z0,r0,vx0,vy0,vz0,mtot,tiny_number,n1
  real    :: y1,x1,dx,x_prime,y_prime
  real    :: unit_velocity,G,rms_in,vol_obj,rhoi,spsound,factor,my_vrms,vxi,vyi,vzi
- real    :: v_inf_cgs,b_crit_cgs
+ real    :: v_inf_code,mu,hyp_h,vr0,vt0,v0
  real    :: rho_cloud_cgs, rho_cloud, mu_cloud, r_equiv
+ real    :: rhat(3),that(3)
  real    :: dustfrac_tmp
  logical :: lrhofunc,empty_sim
  character(len=20), parameter :: filevx = 'cube_v1.dat'
@@ -114,6 +115,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  rho_cloud = 0.
  mu_cloud = 2.3
  r_equiv = 0.
+ v_inf_code = 0.
+ mu = 0.
  pmass = massoftype(igas)
  x0 = 0.
  y0 = 0.
@@ -196,15 +199,16 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  if (in_orbit == 1) then
     write(*,*) "Hyperbolic orbit, see Dullemond+2019 for parameter definitions."
-    v_inf_cgs = v_inf * 1.e5
-    b_crit_cgs = gg * (mtot*umass) / v_inf_cgs**2
-    b_crit = b_crit_cgs / au
-    write(*,*) "Critical impact parameter, b_crit, is ", b_crit, " au"
+    if (v_inf <= tiny_number) call fatal('moddump_infall','v_inf must be > 0 for a hyperbolic orbit')
+    v_inf_code = v_inf*1.e5/unit_velocity
+    mu = G*mtot
+    b_crit = mu/v_inf_code**2
+    write(*,*) "Critical impact parameter, b_crit, is ", b_crit, " code units, ", b_crit*udist/au, " au"
     b = b_frac * b_crit
     ecc = sqrt(1 + b**2/b_crit**2)
     r_close = b * sqrt((ecc-1)/(ecc+1))
     write(*,*) "Eccentricity of the cloud is ", ecc
-    write(*,*) "Closest approach of cloud center will be ", r_close, " au."
+    write(*,*) "Closest approach of cloud center will be ", r_close, " code units, ", r_close*udist/au, " au."
  endif
 
  select case (in_orbit)
@@ -364,9 +368,18 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     endif
  elseif (in_orbit == 1) then
     ! Dullemond+2019
-    ! Initial velocity, all initially in x direction
-    vx0 = v_inf
-    vy0 = 0.0
+    ! Initial centre velocity from the finite-radius hyperbolic orbit.
+    r0 = sqrt(dot_product(xp,xp))
+    if (r0 <= r_close) call fatal('moddump_infall','initial hyperbolic position must be outside r_close')
+    hyp_h = b*v_inf_code
+    v0 = sqrt(v_inf_code**2 + 2.0*mu/r0)
+    vt0 = hyp_h/r0
+    if (vt0 > v0) call fatal('moddump_infall','invalid hyperbolic orbit: tangential speed exceeds total speed')
+    vr0 = -sqrt(max(0.0,v0**2 - vt0**2))
+    rhat = xp/r0
+    that = (/ -rhat(2), rhat(1), 0.0 /)
+    vx0 = vr0*rhat(1) + vt0*that(1)
+    vy0 = vr0*rhat(2) + vt0*that(2)
     vz0 = 0.0
     vp = (/vx0, vy0, vz0/)
     vxyzu_add(1, :) = vxyzu_add(1, :) + vx0
@@ -551,11 +564,11 @@ subroutine write_moddumpfile(filename)
 
  if (in_orbit==0) call write_inopt(r_close,'r_close','closest approach',iunit)
  if (in_orbit==1) then
-    call write_inopt(v_inf,'v_inf','velocity at infinity (code units)',iunit)
+    call write_inopt(v_inf,'v_inf','velocity at infinity [km/s]',iunit)
     call write_inopt(b_frac,'b_frac','impact parameter b as fraction of b_crit',iunit)
-    call write_inopt(b,'b','impact parameter',iunit)
+    call write_inopt(b,'b','impact parameter [code units]',iunit)
     call write_inopt(ecc,'ecc','eccentricity',iunit)
-    call write_inopt(r_close,'r_close','closest approach',iunit)
+    call write_inopt(r_close,'r_close','closest approach [code units]',iunit)
  endif
 
  call write_inopt(incx,'incx','rotation on x axis (deg)',iunit)
