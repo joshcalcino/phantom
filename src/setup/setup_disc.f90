@@ -388,7 +388,7 @@ end subroutine setpart
 subroutine set_warm_neutral_box(id,npart,xyzh,vxyzu,npartoftype,massoftype,hfact)
  use dim,        only:maxp
  use io,         only:master,fatal
- use part,       only:igas
+ use part,       only:igas,nptmass,xyzmh_ptmass,ihacc
  use partinject, only:add_or_update_particle
  use units,      only:umass,udist
  integer, intent(in)    :: id
@@ -398,8 +398,9 @@ subroutine set_warm_neutral_box(id,npart,xyzh,vxyzu,npartoftype,massoftype,hfact
  real,    intent(inout) :: massoftype(:)
  real,    intent(in)    :: hfact
  real :: rho_unit,rho_warm_code,box_code,mass_warm_code,pmass,h_warm,dx
- real :: xyzi(3),vxyz(3),x,y,z
- integer :: n_warm,nx,i,j,k,ipart,n_added
+ real :: xyzi(3),vxyz(3),dr_sink(3),racc2,x,y,z
+ integer :: n_warm,nx,i,j,k,ipart,n_added,n_excluded,isink
+ logical :: inside_sink
 
  box_code = box_size*au/udist
  rho_unit = umass/udist**3
@@ -427,6 +428,7 @@ subroutine set_warm_neutral_box(id,npart,xyzh,vxyzu,npartoftype,massoftype,hfact
  vxyz = 0.
  ipart = npart + 1
  n_added = 0
+ n_excluded = 0
  fill_box: do k=0,nx-1
     z = -0.5*box_code + (real(k) + 0.5)*dx
     do j=0,nx-1
@@ -434,6 +436,21 @@ subroutine set_warm_neutral_box(id,npart,xyzh,vxyzu,npartoftype,massoftype,hfact
        do i=0,nx-1
           x = -0.5*box_code + (real(i) + 0.5)*dx
           xyzi = (/x,y,z/)
+          inside_sink = .false.
+          do isink=1,nptmass
+             racc2 = xyzmh_ptmass(ihacc,isink)**2
+             if (racc2 <= 0.) cycle
+             dr_sink = xyzi - xyzmh_ptmass(1:3,isink)
+             if (periodic_domain) dr_sink = dr_sink - box_code*anint(dr_sink/box_code)
+             if (dot_product(dr_sink,dr_sink) <= racc2) then
+                inside_sink = .true.
+                exit
+             endif
+          enddo
+          if (inside_sink) then
+             n_excluded = n_excluded + 1
+             cycle
+          endif
           call add_or_update_particle(igas,xyzi,vxyz,h_warm,0.,ipart,npart,npartoftype,xyzh,vxyzu)
           ipart = ipart + 1
           n_added = n_added + 1
@@ -442,8 +459,14 @@ subroutine set_warm_neutral_box(id,npart,xyzh,vxyzu,npartoftype,massoftype,hfact
     enddo
  enddo fill_box
 
+ if (n_added < n_warm) then
+    call fatal('set_warm_neutral_box','not enough lattice sites outside sink accretion radii', &
+               var='n_added',ival=n_added)
+ endif
+
  if (id==master) then
     write(*,"(/,a,i0,a,es10.3,a)") ' Added ',n_added,' atomic warm neutral particles at rho = ',rho_warm_cgs,' g cm^-3'
+    if (n_excluded > 0) write(*,"(a,i0,a)") ' Skipped ',n_excluded,' warm-background lattice sites inside sink accretion radii'
  endif
 end subroutine set_warm_neutral_box
 
