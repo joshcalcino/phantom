@@ -19,7 +19,7 @@ module moddump
 !   - cloud_control_mode : *cloud control mode (0=manual mass+size, 1=N sets size, 2=size sets mass)*
 !   - ecc                : *eccentricity*
 !   - ieos_infall        : *eos to set after infall (6=isothermal about sink, 14=binary)*
-!   - in_mass            : *infall mass*
+!   - in_mass            : *infall mass per cloud*
 !   - in_orbit           : *orbit type (0=parabolic, 1=hyperbolic)*
 !   - in_shape           : *infall material shape (0=sphere, 1=ellipse)*
 !   - incx               : *rotation on x axis (deg)*
@@ -27,7 +27,7 @@ module moddump
 !   - incz               : *rotation on z axis (deg)*
 !   - isink              : *index of the sink the eos is centred on (for ieos_infall=6)*
 !   - m_gas              : *gas particle mass in Msun for empty simulations (0 = use existing)*
-!   - n_add              : *number of particles added*
+!   - n_add              : *number of particles added per cloud*
 !   - r_a                : *semi-major axis of ellipse*
 !   - r_close            : *closest approach*
 !   - r_in               : *radius of shape (or semi-minor axis)*
@@ -36,6 +36,7 @@ module moddump
 !   - r_soft             : *softening radius*
 !   - rho_mode           : *density mode (0=current, 1=Dullemond Eq4/Eq5)*
 !   - rms_mach           : *rms Mach number*
+!   - sym_infall         : *balance infall angular momentum with a companion cloud*
 !   - tfact              : *tfact*
 !   - v_inf              : *velocity at infinity [km/s]*
 !
@@ -48,7 +49,7 @@ module moddump
 
  integer, parameter :: nr = 200
  ! runtime parameters, written to/read from the prefix.moddump file
- integer :: in_shape = 1, in_orbit = 1, add_turbulence = 0
+ integer :: in_shape = 1, in_orbit = 1, add_turbulence = 0, sym_infall = 0
  integer :: rho_mode = 0, cloud_control_mode = 0, n_add = 0
  real    :: in_mass = 0.001, r_in = 250.0, r_a = 3500.0, r_init = 4000.0, r_close = 100.0
  real    :: v_inf = 1.0, b = 0.0, b_frac = 1.0, ecc = 0.0
@@ -72,7 +73,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use stretchmap,     only:rho_func
  use kernel,         only:hfact_default
  use physcon,        only:pi,mass_proton_cgs,au
- use vectorutils,    only:rotatevec
+ use vectorutils,    only:cross_product3D,rotatevec
  use centreofmass,   only:reset_centreofmass,get_total_angular_momentum
  use eos,            only:ieos,isink,get_spsound
  use velfield,       only:set_velfield_from_cubes
@@ -87,13 +88,15 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  integer :: ipart,i,np,ierr
  integer(kind=8) :: nptot
  real    :: pmass,delta,big_omega,b_crit
- real    :: vp(3), xp(3), rot_axis(3), rellipsoid(3)
+ real    :: vp(3), xp(3), rellipsoid(3)
  real    :: dma,n0,pf,m0,x0,y0,z0,r0,vx0,vy0,vz0,mtot,tiny_number,n1
  real    :: y1,x1,dx,x_prime,y_prime
  real    :: unit_velocity,G,rms_in,vol_obj,rhoi,spsound,factor,my_vrms,vxi,vyi,vzi
  real    :: v_inf_code,mu,hyp_h,vr0,vt0,v0
  real    :: rho_cloud_cgs, rho_cloud, mu_cloud, r_equiv
  real    :: rhat(3),that(3)
+ real    :: pos_sym(3),vel_sym(3),L_part(3),L_cloud(3),L_sym(3),cloud_centre(3)
+ real    :: sym_axis(3),sym_angle
  real    :: dustfrac_tmp
  logical :: lrhofunc,empty_sim
  character(len=20), parameter :: filevx = 'cube_v1.dat'
@@ -405,12 +408,12 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     endif
  endif
 
- ! Now rotate and add those new particles to existing disc
- ipart = npart ! The initial particle number (post shuffle)
+ ! Rotate the new cloud into its final orientation before constructing an
+ ! angular-momentum-balancing companion.  Applying the same proper rotation
+ ! to position and velocity preserves the cloud structure and orbital energy.
  incx = incx*pi/180.
  incy = incy*pi/180.
  incz = incz*pi/180.
- rot_axis = (/1.,1.,0./)
  do i = 1,n_add
     ! Rotate particle to correct position and velocity
     ! First rotate to get the right initial position
@@ -430,7 +433,28 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
     call rotatevec(xyzh_add(1:3,i),(/0.,0.,1./),incz)
     call rotatevec(vxyzu_add(1:3,i),(/0.,0.,1./),incz)
+ enddo
 
+ if (sym_infall > 0) then
+    L_cloud = 0.
+    cloud_centre = 0.
+    do i = 1,n_add
+       call cross_product3D(xyzh_add(1:3,i),vxyzu_add(1:3,i),L_part)
+       L_cloud = L_cloud + L_part
+       cloud_centre = cloud_centre + xyzh_add(1:3,i)
+    enddo
+    cloud_centre = cloud_centre/real(n_add)
+    call get_symmetry_rotation(sym_infall,L_cloud,cloud_centre,sym_axis,sym_angle,L_sym)
+    write(*,*) 'Original cloud angular momentum (common particle-mass factor omitted): ',L_cloud
+    write(*,*) 'Companion cloud angular momentum: ',L_sym
+    write(*,*) 'The companion doubles n_add and in_mass for the total infall.'
+ endif
+
+ ! Add the original cloud and, when requested, its rotated companion.
+ ! n_add and in_mass describe each individual cloud, matching the convention
+ ! used by the Pineda streamer injector.
+ ipart = npart ! The initial particle number (post shuffle)
+ do i = 1,n_add
     ! Add the particle
     ipart = ipart + 1
     call  add_or_update_particle(igas, xyzh_add(1:3,i), vxyzu_add(1:3,i), xyzh_add(4,i), &
@@ -439,6 +463,17 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
        if (use_dustfrac) then
           dustfrac(1, ipart) = dustfrac_tmp
        endif
+    endif
+
+    if (sym_infall > 0) then
+       pos_sym = xyzh_add(1:3,i)
+       vel_sym = vxyzu_add(1:3,i)
+       call rotatevec(pos_sym,sym_axis,sym_angle)
+       call rotatevec(vel_sym,sym_axis,sym_angle)
+       ipart = ipart + 1
+       call add_or_update_particle(igas,pos_sym,vel_sym,xyzh_add(4,i),vxyzu_add(4,i), &
+                                  ipart,npart,npartoftype,xyzh,vxyzu)
+       if (use_dust .and. use_dustfrac) dustfrac(1,ipart) = dustfrac_tmp
     endif
 
  enddo
@@ -463,6 +498,71 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  deallocate(xyzh_add,vxyzu_add)
 
 end subroutine modify_dump
+
+!----------------------------------------------------------------
+!+
+!  Return the pi rotation that gives a companion cloud with the
+!  requested angular-momentum symmetry.  A proper rotation R applied
+!  to both r and v gives L' = R L exactly, including any turbulent
+!  contribution to the cloud angular momentum.
+!+
+!----------------------------------------------------------------
+subroutine get_symmetry_rotation(mode,L,cloud_centre,axis,angle,L_target)
+ use physcon,     only:pi
+ use vectorutils, only:cross_product3D,make_perp_frame
+ integer, intent(in) :: mode
+ real,    intent(in) :: L(3),cloud_centre(3)
+ real,    intent(out) :: axis(3),angle,L_target(3)
+ real :: axis_norm,L_norm,L_xy,scale,eperp(3)
+
+ L_norm = sqrt(dot_product(L,L))
+ angle = pi
+
+ select case(mode)
+ case(1)
+    ! A pi rotation about z maps (Lx,Ly,Lz) to (-Lx,-Ly,Lz).
+    axis = (/0.,0.,1./)
+    L_target = (/-L(1),-L(2),L(3)/)
+ case(2)
+    ! Choose an axis perpendicular to L, so a pi rotation maps L to -L.
+    call cross_product3D(cloud_centre,L,axis)
+    L_target = -L
+ case(3)
+    ! Rotating by pi about the projection of L into the xy plane maps
+    ! (Lx,Ly,Lz) to (Lx,Ly,-Lz).
+    axis = (/L(1),L(2),0./)
+    L_target = (/L(1),L(2),-L(3)/)
+ end select
+
+ axis_norm = sqrt(dot_product(axis,axis))
+ select case(mode)
+ case(2)
+    scale = sqrt(dot_product(cloud_centre,cloud_centre))*L_norm
+ case(3)
+    scale = L_norm
+ case default
+    scale = 1.
+ end select
+ if (axis_norm <= 100.*epsilon(1.)*max(scale,tiny(1.))) then
+    if (L_norm > tiny(1.)) then
+       call make_perp_frame(L/L_norm,axis,eperp)
+       axis_norm = sqrt(dot_product(axis,axis))
+    else
+       ! A zero-angular-momentum cloud is already balanced; use a harmless
+       ! fixed rotation to keep the companion spatially distinct when possible.
+       axis = (/0.,0.,1./)
+       axis_norm = 1.
+       L_target = 0.
+    endif
+ endif
+ axis = axis/axis_norm
+
+ ! In mode 3 an exactly z-directed L has no xy projection.  The fallback
+ ! perpendicular axis above correctly maps Lz to -Lz.
+ L_xy = sqrt(L(1)*L(1) + L(2)*L(2))
+ if (mode == 3 .and. L_xy <= 100.*epsilon(1.)*max(L_norm,tiny(1.))) L_target = -L
+
+end subroutine get_symmetry_rotation
 
 real function rhofunc(r)
  real, intent(in) :: r
@@ -525,6 +625,8 @@ subroutine read_interactive_moddumpfile()
  call prompt('Enter rotation on y axis (deg):', incy, -360., 360.)
  call prompt('Enter rotation on z axis (deg):', incz, -360., 360.)
 
+ call prompt('Balance infall angular momentum (0=no, 1=Lx/Ly, 2=all, 3=Lz)',sym_infall,0,3)
+
  call prompt('Enter eos to set after infall (6=isothermal about a sink, 14=binary):', ieos_infall)
  do while (ieos_infall /= 6 .and. ieos_infall /= 14)
     call prompt('Please enter either 6 or 14:', ieos_infall)
@@ -551,8 +653,8 @@ subroutine write_moddumpfile(filename)
  call write_inopt(in_orbit,'in_orbit','orbit type (0=parabolic, 1=hyperbolic)',iunit)
  call write_inopt(rho_mode,'rho_mode','density mode (0=current, 1=Dullemond Eq4/Eq5)',iunit)
  call write_inopt(cloud_control_mode,'cloud_control_mode','cloud control mode (0=manual, 1=N sets size, 2=size sets mass)',iunit)
- call write_inopt(n_add,'n_add','number of particles added',iunit)
- call write_inopt(in_mass,'in_mass','infall mass',iunit)
+ call write_inopt(n_add,'n_add','number of particles per cloud (sym_infall > 0 doubles total)',iunit)
+ call write_inopt(in_mass,'in_mass','infall mass per cloud (sym_infall > 0 doubles total)',iunit)
  call write_inopt(m_gas,'m_gas','gas particle mass in Msun for empty simulations (0 = use existing)',iunit)
  call write_inopt(r_in,'r_in','radius of shape (or semi-minor axis)',iunit)
  if (in_shape==1) call write_inopt(r_a,'r_a','semi-major axis of ellipse',iunit)
@@ -574,6 +676,8 @@ subroutine write_moddumpfile(filename)
  call write_inopt(incx,'incx','rotation on x axis (deg)',iunit)
  call write_inopt(incy,'incy','rotation on y axis (deg)',iunit)
  call write_inopt(incz,'incz','rotation on z axis (deg)',iunit)
+ call write_inopt(sym_infall,'sym_infall', &
+                  'companion cloud angular momentum (0=no, 1=Lx/Ly, 2=all, 3=Lz)',iunit)
 
  call write_inopt(add_turbulence,'add_turbulence','add turbulence (0=no, 1=yes)',iunit)
  if (add_turbulence==1) then
@@ -615,6 +719,7 @@ subroutine read_moddumpfile(filename,ierr)
  call read_inopt(rho_mode,'rho_mode',db,errcount=nerr,min=0)
  call read_inopt(cloud_control_mode,'cloud_control_mode',db,errcount=nerr,min=0,max=2)
  call read_inopt(add_turbulence,'add_turbulence',db,errcount=nerr,min=0,max=1)
+ call read_inopt(sym_infall,'sym_infall',db,errcount=nerr,min=0,max=3)
 
  call read_inopt(n_add,'n_add',db,errcount=nerr,min=0)
  call read_inopt(in_mass,'in_mass',db,errcount=nerr,min=0.)
