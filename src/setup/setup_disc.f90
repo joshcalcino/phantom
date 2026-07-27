@@ -3958,7 +3958,7 @@ subroutine set_dustfrac(disc_index,ipart_start,ipart_end,xyzh,xorigini)
 
  !--Determine a global scaling to enforce the requested dust_to_gas
  dust_to_gas_scale = 1.
- if (idust_to_gas_norm == 0) then
+ if (idust_to_gas_norm == 1) then
     if (maxval(dust_to_gas_sum_part) > 0.) then
        dust_to_gas_scale_lo = 0.
        dust_to_gas_scale_hi = 1.
@@ -4069,7 +4069,7 @@ subroutine set_dustfrac(disc_index,ipart_start,ipart_end,xyzh,xorigini)
  if (abs(dust_to_gas_disc-dust_to_gas)/dust_to_gas > tol) then
     write(*,"(a,es15.8)") ' Requested dust-to-gas ratio is ',dust_to_gas
     write(*,"(a,es15.8)") '    Actual dust-to-gas ratio is ',dust_to_gas_disc
-    if (idust_to_gas_norm == 1) then
+    if (idust_to_gas_norm == 0) then
        call warning('setup_disc','dust-to-gas ratio differs from requested')
     else
        call fatal('setup_disc','dust-to-gas ratio is not correct')
