@@ -24,6 +24,7 @@ module moddump
 !   - comp_shift      : *code units to shift companion (+ve towards primary)*
 !   - densityfile     : *filename of the input stellar profile*
 !   - ecc             : *orbital eccentricity*
+!   - gwinspiral      : *add gravitational-wave inspiral to a non-corotating binary*
 !   - hacc            : *accretion radius for the companion [code units]*
 !   - hacc1           : *accretion radius for the primary (triple) [code units]*
 !   - hacc2           : *accretion radius for the 1st companion (triple) [code units]*
@@ -49,9 +50,10 @@ module moddump
 !   - use_corotating_frame : *transform to a corotating frame and simulate corotating binary*
 !   - vel_shift       : *velocity to add in the direction of the primary [code units]*
 !
-! :Dependencies: centreofmass, dim, eos, extern_corotate, externalforces,
-!   infile_utils, io, options, part, physcon, prompting, readwrite_dumps,
-!   readwrite_mesa, setbinary, table_utils, timestep, units, vectorutils
+! :Dependencies: centreofmass, dim, eos, extern_corotate,
+!   extern_gwinspiral, externalforces, infile_utils, io, options, part,
+!   physcon, prompting, readwrite_dumps, readwrite_mesa, setbinary,
+!   table_utils, timestep, units, vectorutils
 !
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
@@ -84,6 +86,7 @@ module moddump
  real    :: hacc            = 0.
  real    :: companion_hsoft = 0.
  logical :: use_corotating_frame = .false.
+ logical :: gwinspiral = .false.
  character(len=120) :: second_dumpfile = ''
  integer :: nstar2 = 0
 
@@ -129,9 +132,10 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use physcon,           only:au,solarm,solarr,gg,pi
  use centreofmass,      only:reset_centreofmass,get_centreofmass
  use options,           only:iexternalforce
- use externalforces,    only:omega_corotate,iext_corotate
+ use externalforces,    only:omega_corotate,iext_corotate,iext_gwinspiral
  use extern_corotate,   only:icompanion_grav,companion_xpos,companion_mass_ext=>companion_mass,&
                              primarycore_xpos,primarycore_mass,primarycore_hsoft,hsoft
+ use extern_gwinspiral, only:Nstar_gw
  use infile_utils,      only:open_db_from_file,inopts,read_inopt,close_db,get_options
  use table_utils,       only:yinterp
  use readwrite_mesa,    only:read_mesa
@@ -214,6 +218,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
           vxyzu(1:3,i) = 0.
        enddo
     else ! non corotating frame
+       if (gwinspiral) iexternalforce = iext_gwinspiral
        call set_binary(m1,m2,a1,ecc,xyzmh1_stash(ihacc),hacc,xyzmh_ptmass,vxyz_ptmass,nptmass,ierr)
     endif
 
@@ -294,6 +299,11 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
           vxyz_ptmass(1:3,nptmass1+nptmass2) = vxyz2_stash(1:3)
        endif
 
+       if (gwinspiral) then
+          Nstar_gw(1) = nstar2
+          Nstar_gw(2) = nstar1
+       endif
+
     else
        nptmass = nptmass1 + 1
        xyzmh_ptmass(1:3,nptmass) = xyzmh2_stash(1:3)
@@ -301,6 +311,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
        xyzmh_ptmass(4,nptmass) = m2
        xyzmh_ptmass(ihacc,nptmass) = hacc
        xyzmh_ptmass(ihsoft,nptmass) = companion_hsoft
+
+       if (gwinspiral) Nstar_gw(1) = npart
     endif
 
     if (nptmass1 == 1) then
@@ -640,6 +652,10 @@ subroutine read_interactive_moddumpfile()
        call prompt('Enter softening length for companion', companion_hsoft, 0.)
     endif
     call prompt('Do you want to transform to a corotating frame and simulate corotating binary?', use_corotating_frame)
+    gwinspiral = .false.
+    if (.not.use_corotating_frame) then
+       call prompt('Do you want to add gravitational radiation reaction?',gwinspiral)
+    endif
     if (operation == 8) then
        call prompt('Enter name of second dumpfile',second_dumpfile)
        call prompt('Enter no. of particles in second dumpfile (0 = same as star 1)',nstar2)
@@ -729,6 +745,9 @@ subroutine write_moddumpfile(filename)
        call write_inopt(companion_hsoft,'companion_hsoft','softening length for companion [code units]',iunit)
     endif
     call write_inopt(use_corotating_frame,'use_corotating_frame','transform to a corotating frame',iunit)
+    if (.not.use_corotating_frame) then
+       call write_inopt(gwinspiral,'gwinspiral','add gravitational radiation reaction',iunit)
+    endif
     if (operation == 8) then
        call write_inopt(second_dumpfile,'second_dumpfile','name of the second dumpfile',iunit)
        call write_inopt(nstar2,'nstar2','number of particles in the second dumpfile (0 = same as star 1)',iunit)
@@ -809,6 +828,11 @@ subroutine read_moddumpfile(filename,ierr)
        call read_inopt(companion_hsoft,'companion_hsoft',db,min=0.,errcount=nerr)
     endif
     call read_inopt(use_corotating_frame,'use_corotating_frame',db,errcount=nerr)
+    if (.not.use_corotating_frame) then
+       call read_inopt(gwinspiral,'gwinspiral',db,errcount=nerr,default=.false.)
+    else
+       gwinspiral = .false.
+    endif
     if (operation == 8) then
        call read_inopt(second_dumpfile,'second_dumpfile',db,errcount=nerr)
        call read_inopt(nstar2,'nstar2',db,min=0,errcount=nerr)
