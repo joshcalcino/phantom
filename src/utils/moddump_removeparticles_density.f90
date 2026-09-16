@@ -26,14 +26,14 @@ module moddump
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use part,         only:rhoh,igas,kill_particle,shuffle_part
+ use part,         only:rho,igas,kill_particle,shuffle_part
  use io,           only:fatal,id,master,fileprefix
  use infile_utils, only:get_options
  integer, intent(inout) :: npart
  integer, dimension(:), intent(inout) :: npartoftype
  real, dimension(:), intent(inout) :: massoftype
  real, dimension(:,:), intent(inout) :: xyzh,vxyzu
- real   :: pmassi,rhoi,hi
+ real   :: rhoi
  integer :: i, compt, ierr
 
  call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
@@ -42,9 +42,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  compt = 0
  do i=1,npart
-     hi = xyzh(4,i)
-     pmassi = massoftype(igas)
-     rhoi = rhoh(hi,pmassi)
+     rhoi = rho(i)
      ! write(*,*) rhoi      ! uncomment to have an idea of the density
      if (rhoi < rho_threshold) then
          call kill_particle(i,npartoftype)

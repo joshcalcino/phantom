@@ -299,7 +299,7 @@ end subroutine read_moddumpfile
 ! This assumes the dump file only has one star.
 !
 subroutine duplicate_star(npart,npartoftype,xyzh,vxyzu,Nstar1,Nstar2)
- use part,         only: igas,set_particle_type,copy_particle
+ use part,         only:igas,set_particle_type,copy_particle
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
@@ -344,7 +344,7 @@ subroutine add_star(npart,npartoftype,xyzh,vxyzu,Nstar1,Nstar2)
  use part,            only: igas,set_particle_type,eos_vars,alphaind,maxeosvars
  use dim,             only: maxp,maxvxyzu,nalpha,maxalpha
  use readwrite_dumps, only:read_dump
- use io,              only: idisk1,iprint
+ use io,              only:idisk1,iprint
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
@@ -603,11 +603,11 @@ end subroutine get_radii
 ! Add an ambient background fluid
 !
 !subroutine add_background(npart,npartoftype,massoftype,xyzh,vxyzu,Nstar1,Nstar2,x1com,x2com,rad1,rad2,nx)
-! use part,     only: hfact,igas,set_particle_type
-! use unifdis,  only: set_unifdis
-! use io,       only: master
+! use part,     only:hfact,igas,set_particle_type
+! use unifdis,  only:set_unifdis
+! use io,       only:master
 ! use boundary, only:set_boundary,xmin,xmax,ymin,ymax,zmin,zmax,totvol
-! use units,    only: unit_density
+! use units,    only:unit_density
 ! integer, intent(inout) :: npart
 ! integer, intent(inout) :: npartoftype(:)
 ! real,    intent(in)    :: massoftype(:)

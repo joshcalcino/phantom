@@ -117,7 +117,7 @@ end subroutine modify_dump
 !+
 !-----------------------------------------------------------------------
 subroutine set_defaults_addsink()
- use units,   only: umass
+ use units,   only:umass
  use physcon, only:solarm
  ! defaults (code units)
  msink    = solarm/umass   ! 1 Msun in code units
