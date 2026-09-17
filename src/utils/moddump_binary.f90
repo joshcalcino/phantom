@@ -12,43 +12,43 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Mike Lau
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
-!   - a1              : *semi-major axis (1st companion for triple) [code units]*
-!   - a2              : *2nd companion semi-major axis (triple) [code units]*
-!   - companion_hsoft : *softening length for companion [code units]*
-!   - companion_mass  : *companion mass [Msun] (corotating-frame ops)*
-!   - cmass1          : *1st companion mass (triple) [code units]*
-!   - cmass2          : *2nd companion mass (triple) [code units]*
-!   - comp_shift      : *code units to shift companion (+ve towards primary)*
-!   - densityfile     : *filename of the input stellar profile*
-!   - ecc             : *orbital eccentricity*
-!   - gwinspiral      : *add gravitational-wave inspiral to a non-corotating binary*
-!   - hacc            : *accretion radius for the companion [code units]*
-!   - hacc1           : *accretion radius for the primary (triple) [code units]*
-!   - hacc2           : *accretion radius for the 1st companion (triple) [code units]*
-!   - hacc3           : *accretion radius for the 2nd companion (triple) [code units]*
-!   - hacc_sec        : *accretion radius of secondary [Rsun]*
-!   - hsoft_core      : *softening length of the created point-mass core*
-!   - hsoft_primary   : *softening length for primary (triple) [code units]*
-!   - hsoft_sec       : *softening length of secondary [Rsun]*
-!   - hsoft_secondary : *softening length for secondary (triple) [code units]*
-!   - hsoft_tertiary  : *softening length for tertiary (triple) [code units]*
-!   - infile_name     : *name of the .in file to read companion/corotation info from*
-!   - iprimary_grav   : *replace primary core with a fixed gravitational potential*
-!   - iproperty       : *sink property index to (re)set (0 = none)*
-!   - iremove         : *which sink to remove (2 or 3)*
-!   - iselect         : *which sink particle to (re)set properties for*
-!   - mcut            : *mass of the created point-mass core [code units]*
-!   - mcomp           : *companion mass [code units]*
-!   - nstar2          : *number of particles in the second dumpfile*
-!   - operation       : *operation to perform (see list below; 1-13)*
-!   - propval         : *new value for the selected sink property [solar units]*
-!   - second_dumpfile : *name of the second dumpfile (operation=8)*
-!   - separation      : *orbital separation [Rsun] (corotating-frame ops)*
-!   - use_corotating_frame : *transform to a corotating frame and simulate corotating binary*
-!   - vel_shift       : *velocity to add in the direction of the primary [code units]*
+!   - a1                   : *1st companion semi-major axis (triple) [code units]*
+!   - a2                   : *2nd companion semi-major axis (triple) [code units]*
+!   - cmass1               : *1st companion mass (triple) [code units]*
+!   - cmass2               : *2nd companion mass (triple) [code units]*
+!   - comp_shift           : *code units to shift companion (+ve towards primary)*
+!   - companion_hsoft      : *softening length for companion [code units]*
+!   - companion_mass       : *companion mass [Msun]*
+!   - densityfile          : *filename of the input stellar profile*
+!   - ecc                  : *orbital eccentricity*
+!   - gwinspiral           : *add gravitational radiation reaction*
+!   - hacc                 : *accretion radius for the companion [code units]*
+!   - hacc1                : *accretion radius for the primary [code units]*
+!   - hacc2                : *accretion radius for the 1st companion [code units]*
+!   - hacc3                : *accretion radius for the 2nd companion [code units]*
+!   - hacc_sec             : *accretion radius of secondary [Rsun]*
+!   - hsoft_core           : *softening length of the created point-mass core*
+!   - hsoft_primary        : *softening length for primary [code units]*
+!   - hsoft_sec            : *softening length of secondary [Rsun]*
+!   - hsoft_secondary      : *softening length for secondary [code units]*
+!   - hsoft_tertiary       : *softening length for tertiary [code units]*
+!   - infile_name          : *name of the .in file to read omega_corotate from*
+!   - iprimary_grav        : *replace primary core with a fixed potential (if 1 sink)*
+!   - iproperty            : *sink property index to (re)set (0 = none)*
+!   - iremove              : *which sink to remove (2 or 3)*
+!   - iselect              : *which sink particle to (re)set properties for*
+!   - mcomp                : *companion mass [code units]*
+!   - mcut                 : *mass of the created point-mass core [code units]*
+!   - nstar2               : *number of particles in the second dumpfile (0 = same as star 1)*
+!   - operation            : *operation to perform (1-13)*
+!   - propval              : *new value for the selected sink property [solar units]*
+!   - second_dumpfile      : *name of the second dumpfile*
+!   - separation           : *orbital separation [Rsun]*
+!   - use_corotating_frame : *transform to a corotating frame*
+!   - vel_shift            : *velocity to add in the direction of the primary [code units]*
 !
 ! :Dependencies: centreofmass, dim, eos, extern_corotate,
 !   extern_gwinspiral, externalforces, infile_utils, io, options, part,
@@ -184,10 +184,10 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  end select
 
  select case(operation)
- !
- !--------------------------------------------------------------------
+    !
+    !--------------------------------------------------------------------
  case(1,8)  ! add a sink companion, or add a star from another dumpfile
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     call reset_centreofmass(npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
     call delete_dead_or_accreted_particles(npart,npartoftype)
     nptmass1 = nptmass
@@ -322,18 +322,18 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
     call reset_centreofmass(npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(2)  ! add a magnetic field in the star
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     if (mhd) then
        print "(/,a,/)", 'Automatic insertion of the magnetic field through the setBfield module'
     else
        print "(/,a,/)", 'Code not compiled with MHD=yes, no changes to the dump have been made'
     endif
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(3)  ! cut profile to create a sink in the core
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     call read_mesa(densityfile,den,r,pres,m,enitab,temp,X_in,Z_in,Xfrac,Yfrac,mu,Mstar,ierr,cgsunits=.false.)
     rcut = yinterp(r,m,mcut)
 
@@ -369,9 +369,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
     call shuffle_part(npart)
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(4)  ! manually create a sink in the core
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     nptmass = nptmass + 1
     if (nptmass > maxptmass) call fatal('ptmass_create','nptmass > maxptmass')
     n = nptmass
@@ -380,9 +380,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     xyzmh_ptmass(ihsoft,n) = hsoft_core
     vxyz_ptmass(:,n)       = 0.
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(5)  ! set up a triple system
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     !resets to (0,0,0) position and velocity of centre of mass for whole system before creating the binary
     call reset_centreofmass(npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
 
@@ -429,9 +429,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     !resets to (0,0,0) position and velocity of centre of mass for whole system after creating the binary
     call reset_centreofmass(npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(6)  ! set up star for relaxation in corotating frame
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     iexternalforce = iext_corotate
     companion_mass_ext = companion_mass
 
@@ -486,9 +486,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     print*,'Orbital period is ',2*pi/omega_corotate * utime / 3.15E+07,' years'
     print*,'Softening radius of companion gravity is ',hsoft,' Rsun'
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(7)  ! set up binary after relaxation in corotating frame
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     call open_db_from_file(db,infile_name,20,ierr)
     call read_inopt(icompanion_grav,'icompanion_grav',db)
     call read_inopt(iexternalforce,'iexternalforce',db)
@@ -543,9 +543,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     tmax = 30.*period
     dtmax = 0.1*period
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(9)  ! remove a sink from the simulation (requires nptmass == 3)
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     do i=1,nptmass
        write(*,'(A,I2,A,ES10.3,A,ES10.3)') 'Point mass ',i,': M = ',xyzmh_ptmass(4,i),&
                                           ' and radial position = ',sqrt(dot_product(xyzmh_ptmass(1:3,i),xyzmh_ptmass(1:3,i)))
@@ -560,18 +560,18 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
        nptmass = 2
     endif
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(10)  ! transform from corotating to inertial frame (requires nptmass == 2)
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     call open_db_from_file(db,infile_name,20,ierr)
     call read_inopt(omega_corotate,'omega_corotate',db)
     call close_db(db)
     call transform_from_corotating_to_inertial_frame(xyzh,vxyzu,npart,nptmass,&
           omega_corotate,xyzmh_ptmass,vxyz_ptmass)
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(11)  ! shift companion position in the corotating frame (requires nptmass == 2)
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     sink_dist = sqrt((xyzmh_ptmass(1,1)-xyzmh_ptmass(1,2))**2 &
                    + (xyzmh_ptmass(2,1)-xyzmh_ptmass(2,2))**2 &
                    + (xyzmh_ptmass(3,1)-xyzmh_ptmass(3,2))**2)
@@ -592,9 +592,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
        vxyz_ptmass(1:3,i) = 0.0
     enddo
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(12)  ! add velocity to companion (requires nptmass == 2)
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     sink_dist = sqrt((xyzmh_ptmass(1,1)-xyzmh_ptmass(1,2))**2 &
               + (xyzmh_ptmass(2,1)-xyzmh_ptmass(2,2))**2 &
               + (xyzmh_ptmass(3,1)-xyzmh_ptmass(3,2))**2)
@@ -605,9 +605,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
     call reset_centreofmass(npart,xyzh,vxyzu,nptmass,xyzmh_ptmass,vxyz_ptmass)
 
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
  case(13)  ! (re)set sink properties (requires nptmass >= 1)
- !--------------------------------------------------------------------
+    !--------------------------------------------------------------------
     call reset_sink_property(xyzmh_ptmass)
 
  end select

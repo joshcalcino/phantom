@@ -50,7 +50,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use part,         only: nptmass, maxptmass, xyzmh_ptmass, vxyz_ptmass, ihsoft, ihacc, iJ2, iReff
  use io,           only: fatal, id, master, fileprefix
  use physcon,      only: deg_to_rad
- use infile_utils, only: get_options
+ use infile_utils, only:get_options
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)

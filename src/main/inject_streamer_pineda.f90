@@ -13,24 +13,21 @@ module inject
 ! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
-!   Common:
+!   - Mdot         : *mass injection rate, in Msun/yr (peak rate if imdot_func > 0)*
 !   - dust_frac    : *Dust fraction in smallest dust bin*
-!   - mdot_func    : *functional form of dM/dt(t), 0=constant*
-!   - stream_model : *0=Mendoza/PIMS, 1=direct Cartesian states*
-!   - sym_stream   : *balance streamer angular momentum*
+!   - mdot_func    : *functional form of dM/dt(t) (0=const)*
+!   - nstreams     : *number of direct Cartesian streamers*
+!   - omega        : *angular velocity of cloud stream originates from (s^-1)*
+!   - phi0         : *phi0 parameter from the Mendoza+09 streamer, in degrees*
+!   - r0           : *r0 parameter from the Mendoza+09 streamer, in au*
+!   - r_inj        : *distance from CoM where stream is injected, in au*
+!   - stream_width : *radius of injected stream in au*
+!   - tend         : *end time of injection in years; negative means infinite*
+!   - theta0       : *theta0 parameter from the Mendoza+09 streamer, in degrees*
+!   - tstart       : *start time of injection in years*
+!   - vr_0         : *radial velocity of cloud stream origin, in km/s*
 !
-!   Used only when stream_model = 0:
-!   - Mdot, stream_width, tstart, tend
-!   - omega, r0, phi0, theta0, r_inj, vr_0
-!
-!   Used only when stream_model = 1:
-!   - nstreams
-!   - Mdot_stream_N, stream_width_N, tstart_stream_N, tend_stream_N
-!   - x_stream_N, y_stream_N, z_stream_N
-!   - vx_stream_N, vy_stream_N, vz_stream_N
-!   - ninjected_stream_N (restart bookkeeping; normally not edited)
-!
-! :Dependencies: dim, infile_utils, io, options, part, partinject, physcon,
+! :Dependencies: dim, infile_utils, options, part, partinject, physcon,
 !   random, units, vectorutils
 !
  implicit none

@@ -10,7 +10,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Daniel Price
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
 !   - lattice_type : *child arrangement (0=regular lattice, 1=random)*

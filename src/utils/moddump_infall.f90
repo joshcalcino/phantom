@@ -14,29 +14,28 @@ module moddump
 !
 ! :Runtime parameters:
 !   - add_turbulence     : *add turbulence (0=no, 1=yes)*
-!   - b                  : *impact parameter*
+!   - b                  : *impact parameter [code units]*
 !   - b_frac             : *impact parameter b as fraction of b_crit*
-!   - cloud_control_mode : *cloud control mode (0=manual mass+size, 1=N sets size, 2=size sets mass)*
-!   - ecc                : *eccentricity*
+!   - cloud_control_mode : *cloud control mode (0=manual, 1=N sets size, 2=size sets mass)*
+!   - eccentricity       : *eccentricity*
 !   - ieos_infall        : *eos to set after infall (6=isothermal about sink, 14=binary)*
-!   - in_mass            : *infall mass per cloud*
+!   - in_mass            : *infall mass per cloud (sym_infall > 0 doubles total)*
 !   - in_orbit           : *orbit type (0=parabolic, 1=hyperbolic)*
 !   - in_shape           : *infall material shape (0=sphere, 1=ellipse)*
 !   - incx               : *rotation on x axis (deg)*
 !   - incy               : *rotation on y axis (deg)*
 !   - incz               : *rotation on z axis (deg)*
-!   - isink              : *index of the sink the eos is centred on (for ieos_infall=6)*
+!   - isink              : *index of the sink the eos is centred on*
 !   - m_gas              : *gas particle mass in Msun for empty simulations (0 = use existing)*
-!   - n_add              : *number of particles added per cloud*
+!   - n_add              : *number of particles per cloud (sym_infall > 0 doubles total)*
 !   - r_a                : *semi-major axis of ellipse*
-!   - r_close            : *closest approach*
+!   - r_close            : *closest approach [code units]*
 !   - r_in               : *radius of shape (or semi-minor axis)*
 !   - r_init             : *initial radial distance*
 !   - r_slope            : *density power law index*
 !   - r_soft             : *softening radius*
 !   - rho_mode           : *density mode (0=current, 1=Dullemond Eq4/Eq5)*
 !   - rms_mach           : *rms Mach number*
-!   - sym_infall         : *balance infall angular momentum with a companion cloud*
 !   - tfact              : *tfact*
 !   - v_inf              : *velocity at infinity [km/s]*
 !

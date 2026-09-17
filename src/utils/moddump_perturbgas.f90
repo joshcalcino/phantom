@@ -10,7 +10,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Mike Lau
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
 !   - perturb_factor      : *fractional velocity perturbation for gas*

@@ -10,21 +10,21 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Daniel Mentiplay
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
 !   - icutinside  : *delete particles inside a given radius*
 !   - icutoutside : *delete particles outside a given radius*
-!   - inradius    : *inward radius [au]*
 !   - incenterx   : *x coordinate of the centre of the inner sphere*
 !   - incentery   : *y coordinate of the centre of the inner sphere*
 !   - incenterz   : *z coordinate of the centre of the inner sphere*
-!   - outradius   : *outward radius [au]*
+!   - inradius    : *inward radius [au]*
 !   - outcenterx  : *x coordinate of the centre of the outer sphere*
 !   - outcentery  : *y coordinate of the centre of the outer sphere*
 !   - outcenterz  : *z coordinate of the centre of the outer sphere*
+!   - outradius   : *outward radius [au]*
 !
-! :Dependencies: infile_utils, io, part
+! :Dependencies: infile_utils, io, part, prompting
 !
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''

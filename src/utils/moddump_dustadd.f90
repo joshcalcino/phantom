@@ -10,14 +10,15 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Stephane Michoulier
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
+!   - H_R_ref         : *H/R at R_ref (size distribution)*
+!   - R_ref           : *reference radius (size distribution)*
 !   - dust_method     : *dust method (1=one fluid, 2=two fluid)*
 !   - dust_to_gas     : *total dust to gas ratio*
 !   - graindens_cgs   : *grain density [g/cm^3]*
-!   - grainsize_cgs   : *grain size [cm] (at R_ref if using a size distribution)*
-!   - H_R_ref         : *H/R at R_ref (size distribution)*
+!   - grainsize_cgs   : *grain size [cm]*
 !   - icutinside      : *delete particles inside a given radius*
 !   - icutoutside     : *delete particles outside a given radius*
 !   - incenterx       : *x coordinate of the centre of the inner sphere*
@@ -34,7 +35,6 @@ module moddump
 !   - outradius       : *outward radius [au]*
 !   - pwl_sizedistrib : *power-law index of the size distribution*
 !   - q_index         : *q index (size distribution)*
-!   - R_ref           : *reference radius (size distribution)*
 !   - sindex          : *power-law index of the grain-size mass distribution (e.g. MRN)*
 !   - sizedistrib     : *set dust size via a size distribution*
 !   - smaxcgs         : *maximum grain size [cm]*

@@ -10,7 +10,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Antoine Alaguero
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
 !   - sink_ind : *index of the sink to centre on*
@@ -51,19 +51,18 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  enddo
 
  do i=1,nptmass
- !skip sink_ind, because useless if put to 0 first
-     if (i==sink_ind) then
-         cycle
-     else
-         xyzmh_ptmass(1:3,i) = xyzmh_ptmass(1:3,i) - xyzmh_ptmass(1:3,sink_ind)
-         vxyz_ptmass(1:3,i) = vxyz_ptmass(1:3,i) - vxyz_ptmass(1:3,sink_ind)
-     endif
+    !skip sink_ind, because useless if put to 0 first
+    if (i==sink_ind) then
+       cycle
+    else
+       xyzmh_ptmass(1:3,i) = xyzmh_ptmass(1:3,i) - xyzmh_ptmass(1:3,sink_ind)
+       vxyz_ptmass(1:3,i) = vxyz_ptmass(1:3,i) - vxyz_ptmass(1:3,sink_ind)
+    endif
  enddo
 
  xyzmh_ptmass(1:3,sink_ind) = xyzmh_ptmass(1:3,sink_ind) - xyzmh_ptmass(1:3,sink_ind)
  vxyz_ptmass(1:3,sink_ind) = vxyz_ptmass(1:3,sink_ind) - vxyz_ptmass(1:3,sink_ind)
 
- return
 end subroutine modify_dump
 
 !----------------------------------------------------------------

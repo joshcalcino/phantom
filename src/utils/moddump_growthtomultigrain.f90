@@ -10,7 +10,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Arnaud Vericel
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
 !   - bins_per_dex : *number of bins per dex*

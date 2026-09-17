@@ -11,7 +11,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Daniel Price
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
 !   - amp : *amplitude of the radial velocity perturbation*

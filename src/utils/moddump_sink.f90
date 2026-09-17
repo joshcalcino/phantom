@@ -10,7 +10,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Mike Lau
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
 !   - delete_sink : *delete the sink instead of modifying it*

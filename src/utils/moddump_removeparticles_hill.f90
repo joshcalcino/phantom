@@ -19,7 +19,7 @@ module moddump
 !   - istar         : *index of the sink treated as the central star*
 !   - zero_vz       : *set vz=0 for particles within the Hill radius fraction (kept)*
 !
-! :Dependencies: infile_utils, io, part
+! :Dependencies: infile_utils, io, part, prompting
 !
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''

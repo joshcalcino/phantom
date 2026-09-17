@@ -10,7 +10,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Antoine Alaguero
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
 !   - rho_threshold : *delete particles with density below this [code units]*
@@ -42,13 +42,13 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  compt = 0
  do i=1,npart
-     rhoi = rho(i)
-     ! write(*,*) rhoi      ! uncomment to have an idea of the density
-     if (rhoi < rho_threshold) then
-         call kill_particle(i,npartoftype)
-         compt = compt+1
-         !xyzh(4,i) = -abs(hi)    !call kill_particle(i,npoftype)
-     endif
+    rhoi = rho(i)
+    ! write(*,*) rhoi      ! uncomment to have an idea of the density
+    if (rhoi < rho_threshold) then
+       call kill_particle(i,npartoftype)
+       compt = compt+1
+       !xyzh(4,i) = -abs(hi)    !call kill_particle(i,npoftype)
+    endif
  enddo
  write(*,*) 'Particles deleted :', compt
  call shuffle_part(npart)

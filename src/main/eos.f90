@@ -39,6 +39,7 @@ module eos
 !
 ! :Runtime parameters:
 !   - C_ent              : *restrict timestep when ds/dt is too large*
+!   - T_warm             : *temperature of atomic warm neutral background in K*
 !   - X                  : *H mass fraction (ignored if variable composition)*
 !   - Z                  : *metallicity (ignored if variable composition)*
 !   - ien_type           : *energy variable (0=auto, 1=entropy, 2=energy, 3=entropy_s)*
@@ -46,11 +47,11 @@ module eos
 !   - ipdv_heating       : *heating from PdV work (0=off, 1=on)*
 !   - iresistive_heating : *resistive heating (0=off, 1=on)*
 !   - ishock_heating     : *shock heating (0=off, 1=on)*
+!   - isink              : *sink used as centre of locally isothermal EOS*
 !   - metallicity        : *metallicity*
 !   - mu                 : *mean molecular weight*
-!   - T_warm             : *temperature of low-density atomic warm neutral gas*
-!   - mu_warm            : *mean molecular weight of low-density atomic warm neutral gas*
-!   - rho_branch_cgs     : *density threshold below which gas uses atomic warm neutral EOS*
+!   - mu_warm            : *mean molecular weight of atomic warm neutral background*
+!   - rho_branch_cgs     : *density threshold for warm branch in g cm^-3*
 !
 ! :Dependencies: dim, dump_utils, eos_HIIR, eos_barotropic, eos_gasradrec,
 !   eos_helmholtz, eos_idealplusrad, eos_mesa, eos_piecewise, eos_shen,

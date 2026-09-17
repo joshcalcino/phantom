@@ -10,7 +10,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Daniel Price
+! :Owner: Josh Calcino
 !
 ! :Runtime parameters:
 !   - Rtorus : *torus radius [code units]*

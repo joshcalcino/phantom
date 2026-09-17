@@ -13,14 +13,13 @@ module moddump
 ! :Owner: Terrence Tricco
 !
 ! :Runtime parameters:
-!   - fac         : *radial pulsation factor, where v_r = fac*r (ioperation=6)*
-!   - icreate     : *how to create 2nd star for GW/pulsation (0=none, 1=duplicate, 2=add from dump)*
-!   - ioperation  : *operation (1=duplicate, 2=add from dump, 3=adjust sep, 4=add Bfield, 5=add GW, 6=radial pulsation, 7=rotational pulsation)*
-!   - omega_inner : *angular velocity at centre (ioperation=7)*
-!   - omega_outer : *angular velocity at surface (ioperation=7)*
+!   - fac             : *radial pulsation factor, where v_r = fac*r (ioperation=6)*
+!   - icreate         : *how to create 2nd star for GW/pulsation (0=none,1=duplicate,2=add from dump)*
+!   - omega_inner     : *angular velocity at centre (ioperation=7)*
+!   - omega_outer     : *angular velocity at surface (ioperation=7)*
 !   - second_dumpfile : *name of second dumpfile to add (ioperation/icreate=2)*
-!   - sep         : *radial separation between stars [code units]*
-!   - synchro     : *synchronise the binary rotation to the orbit*
+!   - sep             : *radial separation between stars [code units]*
+!   - synchro         : *synchronise the binary rotation to the orbit*
 !
 ! :Dependencies: centreofmass, checkconserved, dim, extern_gwinspiral,
 !   externalforces, infile_utils, io, options, part, physcon, prompting,

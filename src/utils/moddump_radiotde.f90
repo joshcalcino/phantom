@@ -10,7 +10,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Fitz Hu
+! :Owner: Fitz) Hu
 !
 ! :Runtime parameters:
 !   - ieos             : *equation of state used*

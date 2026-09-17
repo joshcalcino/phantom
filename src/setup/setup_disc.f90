@@ -22,74 +22,75 @@ module setup
 ! :Owner: Daniel Mentiplay
 !
 ! :Runtime parameters:
-!   - R_rot          : *Set rotational velocity as Keplerian velocity at R=R_rot*
-!   - Ratm_in        : *inner atmosphere radius (planet radii)*
-!   - Ratm_out       : *outer atmosphere radius (planet radii)*
-!   - Rin_sphere     : *Inner edge of sphere*
-!   - Rout_sphere    : *Outer edge of sphere*
-!   - T_floor        : *The minimum temperature in the simulation (for any locally isothermal EOS).*
-!   - add_warm       : *add atomic warm neutral background gas*
-!   - box_size       : *periodic box size in au*
-!   - accr1          : *single star accretion radius*
-!   - accr1a         : *single star accretion radius*
-!   - accr1b         : *single star accretion radius*
-!   - accr2          : *secondary accretion radius*
-!   - accr2a         : *tight binary primary accretion radius*
-!   - accr2b         : *tight binary secondary accretion radius*
-!   - add_sphere     : *add sphere around disc?*
-!   - add_turbulence : *Add turbulence to the sphere (0=no turbulence, 1=turbulence)*
-!   - alphaSS        : *desired alphaSS (0 for minimal needed for shock capturing)*
-!   - alpha_z        : *height of transition in tanh vertical temperature profile*
-!   - atm_type       : *atmosphere type (1:r**(-3); 2:r**(-1./(gamma-1.)))*
-!   - beta_z         : *variation in transition height over radius*
-!   - bhspin         : *black hole spin*
-!   - bhspinangle    : *black hole spin angle (deg)*
-!   - deltat         : *output interval as fraction of orbital period*
-!   - discstrat      : *stratify disc? (0=no,1=yes)*
-!   - einst_prec     : *include Einstein precession*
-!   - eos_file       : *Equation of state file for using lumdisc*
-!   - ipotential     : *potential (1=central point mass,*
-!   - istrat         : *temperature prescription (0=MAPS, 1=Dartois)*
-!   - k              : *Scaling factor of Keplerian rotational velocity*
-!   - lumdisc        : *Set qindex from stellar luminosity (ieos=24) (0=no 1=yes)*
-!   - m1             : *first hierarchical level primary mass*
-!   - m2             : *first hierarchical level secondary mass*
-!   - mass_sphere    : *Mass of sphere*
-!   - norbits        : *maximum number of orbits at outer disc*
-!   - np             : *number of gas particles*
-!   - nplanets       : *number of planets*
-!   - nsinks         : *number of sinks*
-!   - omega_cloud    : *Rotational velocity of the cloud (s^-1)*
-!   - q1             : *tight binary 1 mass ratio*
-!   - q2             : *tight binary 2 mass ratio*
-!   - qatm           : *sound speed power law index of atmosphere*
-!   - radkappa       : *constant radiation opacity kappa*
-!   - rho_branch_cgs : *density threshold for atomic warm neutral EOS branch*
-!   - rho_warm_cgs   : *atomic warm neutral background density in g cm^-3*
-!   - periodic_domain : *use a finite periodic computational domain*
-!   - ramp           : *Do you want to ramp up the planet mass slowly?*
-!   - rho_core       : *planet core density (cgs units)*
-!   - rms_mach       : *RMS Mach number of turbulence*
-!   - set_freefall   : *Set the sphere in freefall (0=no freefall, 1=freefall)*
-!   - subst          : *star to substitute*
-!   - subst1         : *first star to substitute*
-!   - subst2         : *second star to substitute*
-!   - surface_force  : *model m1 as planet with surface*
-!   - temp_atm0      : *atmosphere temperature scaling factor*
-!   - temp_mid0      : *midplane temperature scaling factor*
-!   - tfact          : *Scale the maximum length scale of the turbulence*
-!   - use_mcfost     : *use the mcfost library*
-!   - mu_warm        : *mean molecular weight of atomic warm neutral background*
-!   - T_warm         : *atomic warm neutral background temperature in K*
-!   - z0             : *z scaling factor*
+!   - R_rot           : *Set rotational velocity as Keplerian velocity at R=R_rot*
+!   - Ratm_in         : *inner atmosphere radius (planet radii)*
+!   - Ratm_out        : *outer atmosphere radius (planet radii)*
+!   - Rin_sphere      : *Inner edge of sphere*
+!   - Rout_sphere     : *Outer edge of sphere*
+!   - T_floor         : *The minimum temperature in the simulation (for any locally isothermal EOS).*
+!   - T_warm          : *temperature of atomic warm neutral background in K*
+!   - accr1           : *single star accretion radius*
+!   - accr1a          : *single star accretion radius*
+!   - accr1b          : *single star accretion radius*
+!   - accr2           : *secondary accretion radius*
+!   - accr2a          : *tight binary primary accretion radius*
+!   - accr2b          : *tight binary secondary accretion radius*
+!   - add_sphere      : *add sphere around disc?*
+!   - add_turbulence  : *Add turbulence to the sphere (0=no turbulence, 1=turbulence)*
+!   - add_warm        : *add atomic warm neutral background gas?*
+!   - alphaSS         : *desired alphaSS (0 for minimal needed for shock capturing)*
+!   - alpha_z         : *height of transition in tanh vertical temperature profile*
+!   - atm_type        : *atmosphere type (1:r**(-3); 2:r**(-1./(gamma-1.)))*
+!   - beta_z          : *variation in transition height over radius*
+!   - bhspin          : *black hole spin*
+!   - bhspinangle     : *black hole spin angle (deg)*
+!   - box_size        : *user-specified periodic cube side length in au*
+!   - deltat          : *output interval as fraction of orbital period*
+!   - discstrat       : *stratify disc? (0=no,1=yes)*
+!   - einst_prec      : *include Einstein precession*
+!   - eos_file        : *Equation of state file for using lumdisc*
+!   - ipotential      : *potential (1=central point mass,*
+!   - istrat          : *temperature prescription (0=MAPS, 1=Dartois)*
+!   - k               : *Scaling factor of Keplerian rotational velocity*
+!   - lumdisc         : *Set qindex from stellar luminosity (ieos=24) (0=no 1=yes)*
+!   - m1              : *first hierarchical level primary mass*
+!   - m2              : *first hierarchical level secondary mass*
+!   - mass_sphere     : *Mass of sphere*
+!   - mu_warm         : *mean molecular weight of atomic warm neutral background*
+!   - norbits         : *maximum number of orbits at outer disc*
+!   - np              : *number of gas particles*
+!   - nplanets        : *number of planets*
+!   - nsinks          : *number of sinks*
+!   - omega_cloud     : *Rotational velocity of the cloud (s^-1)*
+!   - periodic_domain : *use finite periodic computational domain?*
+!   - q1              : *tight binary 1 mass ratio*
+!   - q2              : *tight binary 2 mass ratio*
+!   - qatm            : *sound speed power law index of atmosphere*
+!   - radkappa        : *constant radiation opacity kappa*
+!   - ramp            : *Do you want to ramp up the planet mass slowly?*
+!   - rho_branch_cgs  : *EOS density threshold for warm branch in g cm^-3*
+!   - rho_core        : *planet core density (cgs units)*
+!   - rho_warm_cgs    : *initial atomic warm neutral background density in g cm^-3*
+!   - rms_mach        : *RMS Mach number of turbulence*
+!   - set_freefall    : *Set the sphere in freefall (0=no freefall, 1=freefall)*
+!   - subst           : *star to substitute*
+!   - subst1          : *first star to substitute*
+!   - subst2          : *second star to substitute*
+!   - surface_force   : *model m1 as planet with surface*
+!   - temp_atm0       : *atmosphere temperature scaling factor*
+!   - temp_mid0       : *midplane temperature scaling factor*
+!   - tfact           : *Scale the maximum length scale of the turbulence*
+!   - use_mcfost      : *use the mcfost library*
+!   - z0              : *z scaling factor*
 !
-! :Dependencies: centreofmass, datafiles, dim, eos, eos_stamatellos,
-!   extern_binary, extern_corotate, extern_lensethirring, externalforces,
-!   fileutils, grids_for_setup, growth, infile_utils, io, io_control,
-!   kernel, memory, options, orbits, part, partinject, physcon, prompting,
-!   radiation_utils, set_dust, set_dust_options, setbinary, setdisc,
-!   sethier_utils, sethierarchical, setorbit, setunits, shock_capturing,
-!   spherical, systemutils, timestep, units, vectorutils, velfield
+! :Dependencies: boundary, centreofmass, datafiles, dim, eos,
+!   eos_stamatellos, extern_binary, extern_corotate, extern_lensethirring,
+!   externalforces, fileutils, grids_for_setup, growth, infile_utils, io,
+!   io_control, kernel, memory, options, orbits, part, partinject, physcon,
+!   prompting, radiation_utils, set_dust, set_dust_options, setbinary,
+!   setdisc, sethier_utils, sethierarchical, setorbit, setunits,
+!   shock_capturing, spherical, systemutils, timestep, units, vectorutils,
+!   velfield
 !
  use dim,              only:use_dust,maxalpha,use_dustgrowth,maxdusttypes,&
                             maxdustlarge,maxdustsmall,compiled_with_mcfost,gr

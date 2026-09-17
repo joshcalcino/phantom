@@ -119,7 +119,6 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     call rotatevec(temp_v, (/1.0,0.,0./), alpha)
     call rotatevec(temp_v, (/0.,0.,1.0/), gamma)
 
-
     temp_x = temp(1)
     temp_y = temp(2)
     temp_z = temp(3)
@@ -152,7 +151,6 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 !
  enddo
 
- return
 end subroutine modify_dump
 
 subroutine read_interactive_moddumpfile()
