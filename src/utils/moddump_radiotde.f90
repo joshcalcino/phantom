@@ -36,10 +36,10 @@ module moddump
  character(len=*), parameter, public :: moddump_flags = ''
 
  public :: modify_dump
- private :: rho,rho_tab,get_temp_r,uerg,calc_rhobreak,calc_rho0,write_moddumpfile,read_moddumpfile
+ private :: rho,rho_tab,get_temp_r,uerg,calc_rhobreak,calc_rho0,write_setupfile,read_setupfile
 
  private
- integer           :: ieos_in,nprof,nbreak
+ integer           :: ieos_in,nprof,nbreak,nbreak_old
  real              :: temperature,mu,ignore_radius,rad_max,rad_min
  character(len=50) :: profile_filename
  character(len=3)  :: interpolation
@@ -47,7 +47,7 @@ module moddump
  real, allocatable :: rhof_n_in(:),rhof_rbreak_in(:)
  real, allocatable :: rad_prof(:),dens_prof(:)
  real              :: rhof_rho0,m_target,m_threshold
- logical           :: use_func,remove_overlap
+ logical           :: use_func,use_func_old,remove_overlap
 
 contains
 
@@ -62,7 +62,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use part,         only:igas,set_particle_type,pxyzu,delete_particles_inside_radius,&
                         delete_particles_outside_sphere,kill_particle,shuffle_part, &
                         eos_vars,itemp,igamma,igasP
- use io,           only:fatal,master,id,fileprefix
+ use io,           only:fatal,master,id
  use units,        only:umass,udist,utime,set_units,unit_density
  use timestep,     only:dtmax,tmax
  use dynamic_dtmax,only:idtmax_frac,dtmax_ifactor,idtmax_n
@@ -71,7 +71,6 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use stretchmap,   only:get_mass_r,rho_func
  use spherical,    only:set_sphere
  use mpidomain,    only:i_belong
- use infile_utils, only:get_options
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: xyzh(:,:)
@@ -80,8 +79,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  integer                       :: i,ierr,iunit,iprof
  integer                       :: np_sphere,npart_old
  real                          :: totmass,delta,r,rhofr,presi
- character(len=120)            :: setfile
- logical                       :: read_temp
+ character(len=120)            :: fileset,fileprefix
+ logical                       :: read_temp,setexists
  real, allocatable             :: masstab(:),temp_prof(:)
  character(len=15), parameter  :: default_name = 'default_profile'
  real, dimension(7), parameter :: dens_prof_default = (/8.9e-21, 5.1e-21, 3.3e-21, 2.6e-21, &
@@ -90,20 +89,25 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
                                                        4.0e17, 4.8e17, 7.1e17/) ! profile from Cendes+2021
  procedure(rho_func), pointer  :: rhof
 
+ !--Check for existence of the .params files
+ fileprefix = 'radio'
+ fileset=trim(fileprefix)//'.params'
+ inquire(file=fileset,exist=setexists)
+
  !--Set default values
  temperature       = 10.           ! Temperature in Kelvin
  mu                = 1.            ! mean molecular weight
  ieos_in           = 2
  ignore_radius     = 1.e14          ! in cm
  use_func          = .true.
+ use_func_old      = use_func
  remove_overlap    = .true.
  !--Power law default setups
  rad_max           = 7.1e16        ! in cm
  rad_min           = 8.7e15        ! in cm
  nbreak            = 1
+ nbreak_old        = nbreak
  rhof_rho0         = 1.e4*mu*mass_proton_cgs
- if (allocated(rhof_n)) deallocate(rhof_n)
- if (allocated(rhof_rbreak)) deallocate(rhof_rbreak)
  allocate(rhof_n(nbreak),rhof_rbreak(nbreak))
  rhof_n            = -1.7
  rhof_rbreak       = rad_min
@@ -116,12 +120,27 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  nprof             = 7
  interpolation     = 'log'
 
- !--Read values from the prefix.moddump file (or write a template and stop).
- !  Changing nbreak/use_func makes the required options change, so an
- !  incomplete file is topped up and the user is asked to edit and rerun.
- setfile = trim(fileprefix)//'.moddump'
- call get_options(setfile,id==master,ierr,read_moddumpfile,write_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ !--Read values from .setup
+ if (setexists) call read_setupfile(fileset,ierr)
+ if (.not. setexists .or. ierr /= 0) then
+    !--Prompt to get inputs and write to file
+    call write_setupfile(fileset)
+    stop
+ elseif (nbreak /= nbreak_old) then
+    !--Rewrite setup file
+    write(*,'(a)') ' [nbreak] changed. Rewriting setup file ...'
+    deallocate(rhof_n,rhof_rbreak)
+    allocate(rhof_n(nbreak),rhof_rbreak(nbreak))
+    rhof_n = -1.7
+    rhof_rbreak = rad_min
+    call write_setupfile(fileset)
+    stop
+ elseif (use_func .neqv. use_func_old) then
+    !--Rewrite setup fi.e
+    write(*,'(a)') ' [use_func] changed. Rewriting setup file ...'
+    call write_setupfile(fileset)
+    stop
+ endif
 
  !--allocate memory
  if (use_func) then
@@ -402,31 +421,18 @@ end subroutine calc_rho0
 
 !----------------------------------------------------------------
 !+
-!  write parameters to the .moddump file
+!  write parameters to setup file
 !+
 !----------------------------------------------------------------
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_setupfile(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
  integer            :: i
  character(len=20)  :: rstr,nstr
 
- !--make sure the broken-power-law arrays match nbreak, which may have been
- !  changed via the file (this is what triggers a top-up + rerun)
- if (use_func) then
-    if (.not.allocated(rhof_n) .or. size(rhof_n) /= nbreak) then
-       if (allocated(rhof_n)) deallocate(rhof_n)
-       if (allocated(rhof_rbreak)) deallocate(rhof_rbreak)
-       allocate(rhof_n(nbreak),rhof_rbreak(nbreak))
-       rhof_n = -1.7
-       rhof_rbreak = rad_min
-    endif
- endif
-
- write(*,"(a)") ' writing moddump options file '//trim(filename)
+ write(*,"(a)") ' writing setup options file '//trim(filename)
  open(unit=iunit,file=filename,status='replace',form='formatted')
- call write_moddump_header(iunit)
  write(iunit,"(a)") '# input file for setting up a circumnuclear gas cloud'
 
  write(iunit,"(/,a)") '# geometry'
@@ -465,61 +471,65 @@ subroutine write_moddumpfile(filename)
 
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_setupfile
 
 !----------------------------------------------------------------
 !+
-!  Read parameters from the .moddump file
+!  Read parameters from setup file
 !+
 !----------------------------------------------------------------
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_setupfile(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
+ use io,           only:fatal
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
  integer, parameter            :: iunit=21,in_num=50
- integer                       :: i,nerr
+ integer                       :: i
  type(inopts), allocatable     :: db(:)
  character(len=20)             :: rstr,nstr
+ real                          :: use_func_test
 
- nerr = 0
- write(*,"(a)")'  reading moddump options from '//trim(filename)
+ write(*,"(a)")'  reading setup options from '//trim(filename)
  call open_db_from_file(db,filename,iunit,ierr)
- if (ierr /= 0) return
 
- call read_inopt(ignore_radius,'ignore_radius',db,min=0.,errcount=nerr)
- call read_inopt(remove_overlap,'remove_overlap',db,errcount=nerr)
- call read_inopt(use_func,'use_func',db,errcount=nerr)
+ call read_inopt(ignore_radius,'ignore_radius',db,min=0.,err=ierr)
+ call read_inopt(remove_overlap,'remove_overlap',db,err=ierr)
+ call read_inopt(use_func,'use_func',db,err=ierr)
+ call read_inopt(use_func_test,'nbreak',db,err=ierr)
+ if (ierr == -1) use_func_old = .false.
  if (use_func) then
-    call read_inopt(rad_min,'rad_min',db,min=ignore_radius,errcount=nerr)
-    call read_inopt(rad_max,'rad_max',db,min=rad_min,errcount=nerr)
-    call read_inopt(rhof_rho0,'rhof_rho0',db,errcount=nerr)
-    call read_inopt(m_target,'m_target',db,errcount=nerr)
-    call read_inopt(m_threshold,'m_threshold',db,errcount=nerr)
-    call read_inopt(nbreak,'nbreak',db,min=1,errcount=nerr)
-    if (allocated(rhof_rbreak_in)) deallocate(rhof_rbreak_in)
-    if (allocated(rhof_n_in)) deallocate(rhof_n_in)
+    call read_inopt(rad_min,'rad_min',db,min=ignore_radius,err=ierr)
+    call read_inopt(rad_max,'rad_max',db,min=rad_min,err=ierr)
+    call read_inopt(rhof_rho0,'rhof_rho0',db,err=ierr)
+    call read_inopt(m_target,'m_target',db,err=ierr)
+    call read_inopt(m_threshold,'m_threshold',db,err=ierr)
+    call read_inopt(nbreak,'nbreak',db,min=1,err=ierr)
     allocate(rhof_rbreak_in(in_num),rhof_n_in(in_num))
-    call read_inopt(rhof_n_in(1),'rhof_n_1',db,errcount=nerr)
+    call read_inopt(rhof_n_in(1),'rhof_n_1',db,err=ierr)
     rhof_rbreak_in(1) = rad_min
-    do i=2,nbreak
+    do i=2,nbreak+1
        write(rstr,'(a12,i1)') 'rhof_rbreak_',i
        write(nstr,'(a7,i1)') 'rhof_n_',i
-       call read_inopt(rhof_rbreak_in(i),trim(rstr),db,min=rhof_rbreak_in(i-1),max=rad_max,errcount=nerr)
-       call read_inopt(rhof_n_in(i),trim(nstr),db,errcount=nerr)
+       call read_inopt(rhof_rbreak_in(i),trim(rstr),db,min=rhof_rbreak_in(i-1),max=rad_max,err=ierr)
+       call read_inopt(rhof_n_in(i),trim(nstr),db,err=ierr)
+       if (ierr == 0) nbreak_old = i
     enddo
  else
-    call read_inopt(profile_filename,'profile_filename',db,errcount=nerr)
-    call read_inopt(nprof,'nprof',db,min=1,errcount=nerr)
-    call read_inopt(interpolation,'interpolation',db,errcount=nerr)
+    call read_inopt(profile_filename,'profile_filename',db,err=ierr)
+    call read_inopt(nprof,'nprof',db,min=1,err=ierr)
+    call read_inopt(interpolation,'interpolation',db,err=ierr)
  endif
 
- call read_inopt(ieos_in,'ieos',db,errcount=nerr)
- call read_inopt(temperature,'temperature',db,errcount=nerr)
- call read_inopt(mu,'mu',db,errcount=nerr)
+ call read_inopt(ieos_in,'ieos',db,err=ierr)
+ call read_inopt(temperature,'temperature',db,err=ierr)
+ call read_inopt(mu,'mu',db,err=ierr)
 
  call close_db(db)
- if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+ if (ierr /= 0) then
+    call fatal('moddump_radiotde','Error in reading setup file')
+ endif
+
+end subroutine read_setupfile
 
 end module moddump

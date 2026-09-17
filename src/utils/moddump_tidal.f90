@@ -28,7 +28,8 @@ module moddump
 !   - theta                : *stellar rotation with respect to y-axis (in degrees)*
 !
 ! :Dependencies: centreofmass, dim, externalforces, infile_utils, io,
-!   metric, options, orbits, part, physcon, setbinary, units, vectorutils
+!   metric, options, orbits, part, physcon, prompting, setbinary, units,
+!   vectorutils
 !
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
@@ -58,6 +59,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use externalforces, only:accradius1,accradius1_hard
  use options,        only:iexternalforce
  use dim,            only:gr
+ use prompting,      only:prompt
  use physcon,        only:pi,solarm,solarr
  use units,          only:umass,udist,get_c_code
  use metric,         only:a
@@ -65,13 +67,14 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use vectorutils,    only:rotatevec
  use setbinary,      only:set_binary
  use part,           only:nptmass,xyzmh_ptmass,vxyz_ptmass,ihacc,ihsoft
- use io,             only:fatal,id,master,fileprefix
- use infile_utils,   only:get_options
+ use io,             only:fatal
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
+ character(len=120)      :: filename
  integer                 :: i,ierr
+ logical                 :: iexist
  real                    :: Ltot(3)
  real                    :: rp,rt
  real                    :: x0,y0,vx0,vy0,vz0,alpha,z0
@@ -107,15 +110,19 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  ! setting a default r0 value
  r0 = 10*rt
 
- ! default parameters for binary (overwritten from the .moddump file)
+ ! default parameters for binary (overwritten from .tdeparams file)
  use_binary = .false.
  use_sink = .false.
  iorigin = 0
 
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
-
+ filename = 'tde'//'.tdeparams'                                ! moddump should really know about the output file prefix...
+ inquire(file=filename,exist=iexist)
+ if (iexist) call read_setupfile(filename,ierr)
+ if (.not. iexist .or. ierr /= 0) then
+    call write_setupfile(filename)
+    print*,' Edit '//trim(filename)//' and rerun phantommoddump'
+    stop
+ endif
  print*,"--------------------------------------------"
  print*,use_binary,"use_binary"
  print*,"--------------------------------------------"
@@ -294,18 +301,17 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 end subroutine modify_dump
 
 !
-!---Read/write moddump file------------------------------------------------
+!---Read/write setup file--------------------------------------------------
 !
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_setupfile(filename)
+ use infile_utils, only:write_inopt
  use dim,          only:gr
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
 
  print "(a)",' writing moddump params file '//trim(filename)
  open(unit=iunit,file=filename,status='replace',form='formatted')
- call write_moddump_header(iunit)
- write(iunit,"(a)") '# parameters file for a TDE phantommoddump'
+ write(iunit,"(a)") '# parameters file for a TDE phantommodump'
  call write_inopt(beta,  'beta',  'penetration factor',                                  iunit)
  call write_inopt(Mh1,    'mh',    'mass of black hole (code units)',                    iunit)
  call write_inopt(ms,    'ms',    'mass of star       (code units)',                     iunit)
@@ -329,9 +335,9 @@ subroutine write_moddumpfile(filename)
  endif
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_setupfile
 
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_setupfile(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  use io,           only:error
  use dim,          only:gr
@@ -341,10 +347,10 @@ subroutine read_moddumpfile(filename,ierr)
  integer :: nerr
  type(inopts), allocatable :: db(:)
 
- print "(a)",'reading moddump options from '//trim(filename)
+ print "(a)",'reading setup options from '//trim(filename)
  nerr = 0
+ ierr = 0
  call open_db_from_file(db,filename,iunit,ierr)
- if (ierr /= 0) return
  call read_inopt(beta,   'beta',   db,min=0.,errcount=nerr)
  call read_inopt(Mh1,    'mh',     db,min=0.,errcount=nerr)
  call read_inopt(ms,     'ms',     db,min=0.,errcount=nerr)
@@ -368,9 +374,12 @@ subroutine read_moddumpfile(filename,ierr)
     endif
  endif
  call close_db(db)
- if (nerr > 0) ierr = nerr
+ if (nerr > 0) then
+    print "(1x,i2,a)",nerr,' error(s) during read of setup file: re-writing...'
+    ierr = nerr
+ endif
 
-end subroutine read_moddumpfile
+end subroutine read_setupfile
 
 subroutine get_angmom(ltot,npart,xyzh,vxyzu)
  real,    intent(out) :: ltot(3)
