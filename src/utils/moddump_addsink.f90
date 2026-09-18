@@ -14,7 +14,7 @@ module moddump
 !
 ! :References: None
 !
-! :Owner: Daniel Price
+! :Owner: Not Committed Yet
 !
 ! :Runtime parameters:
 !   - incl_deg   : *inclination angle [deg]*
@@ -32,8 +32,9 @@ module moddump
 !   - z0         : *initial z position [code units]*
 !   - z0_dir     : *initial z position [code units]*
 !
-! :Dependencies: infile_utils, io, part, physcon, units
+! :Dependencies: infile_utils, io, moddump_utils, part, physcon, units
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -44,29 +45,23 @@ module moddump
  real    :: x0, y0_dir, z0_dir                  ! direct-mode position
  real    :: vx0, vy0, vz0_dir                   ! direct-mode velocity
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .false.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use part,         only: nptmass, maxptmass, xyzmh_ptmass, vxyz_ptmass, ihsoft, ihacc, iJ2, iReff
- use io,           only: fatal, id, master, fileprefix
- use physcon,      only: deg_to_rad
- use infile_utils, only:get_options
+ use part,         only:nptmass,maxptmass,xyzmh_ptmass,vxyz_ptmass,ihsoft,ihacc,iJ2,iReff
+ use io,           only:fatal,id,master
+ use physcon,      only:deg_to_rad
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
 
- integer :: ierr
  real    :: xp(3), vp(3)
  real    :: incl, s
-
- !--defaults (will be overridden by prefix.moddump if present)
- call set_defaults_addsink()
-
- !--read parameter file (or write template and stop)
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
 
  !--bounds check to avoid out-of-bounds access on ptmass arrays
  if (nptmass >= maxptmass) then
@@ -145,8 +140,8 @@ end subroutine set_defaults_addsink
 !  Write moddump parameter file
 !+
 !-----------------------------------------------------------------------
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
 
@@ -179,15 +174,15 @@ subroutine write_moddumpfile(filename)
  call write_inopt(vz0_dir,'vz0_dir','initial vz [code units]',iunit)
 
  close(iunit)
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !-----------------------------------------------------------------------
 !+
 !  Read moddump parameter file
 !+
 !-----------------------------------------------------------------------
-subroutine read_moddumpfile(filename,ierr)
- use infile_utils, only:open_db_from_file, inopts, read_inopt, close_db
+subroutine read_moddump(filename,ierr)
+ use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
  integer, parameter :: iunit = 21
@@ -224,6 +219,11 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
+
+subroutine init_moddump()
+
+ call set_defaults_addsink()
+end subroutine init_moddump
 
 end module moddump

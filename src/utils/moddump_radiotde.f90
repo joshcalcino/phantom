@@ -29,16 +29,19 @@ module moddump
 !   - temperature      : *temperature of the gas cloud (-ve = read from file)*
 !   - use_func         : *if use broken power law for density profile*
 !
-! :Dependencies: dynamic_dtmax, eos, infile_utils, io, kernel, mpidomain,
-!   part, physcon, setup_params, spherical, stretchmap, timestep, units
+! :Dependencies: dynamic_dtmax, eos, infile_utils, io, kernel,
+!   moddump_utils, mpidomain, part, physcon, setup_params, spherical,
+!   stretchmap, timestep, units
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
  public :: modify_dump
- private :: rho,rho_tab,get_temp_r,uerg,calc_rhobreak,calc_rho0,write_moddumpfile,read_moddumpfile
+ private :: rho,rho_tab,get_temp_r,uerg,calc_rhobreak,calc_rho0
 
  private
+ character(len=*), parameter :: default_name = 'default_profile'
  integer           :: ieos_in,nprof,nbreak
  real              :: temperature,mu,ignore_radius,rad_max,rad_min
  character(len=50) :: profile_filename
@@ -49,6 +52,10 @@ module moddump
  real              :: rhof_rho0,m_target,m_threshold
  logical           :: use_func,remove_overlap
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .false.
+ public :: moddump_interactive
+
 contains
 
 !----------------------------------------------------------------
@@ -57,13 +64,13 @@ contains
 !
 !----------------------------------------------------------------
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use physcon,      only:solarm,years,mass_proton_cgs,kb_on_mh,kboltz,radconst
+ use physcon,      only:solarm,years
  use setup_params, only:npart_total
- use part,         only:igas,set_particle_type,pxyzu,delete_particles_inside_radius,&
+ use part,         only:igas,set_particle_type,pxyzu,delete_particles_inside_radius, &
                         delete_particles_outside_sphere,kill_particle,shuffle_part, &
                         eos_vars,itemp,igamma,igasP
- use io,           only:fatal,master,id,fileprefix
- use units,        only:umass,udist,utime,set_units,unit_density
+ use io,           only:fatal,master,id
+ use units,        only:umass,udist,utime,unit_density
  use timestep,     only:dtmax,tmax
  use dynamic_dtmax,only:idtmax_frac,dtmax_ifactor,idtmax_n
  use eos,          only:ieos,gmw
@@ -71,57 +78,23 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use stretchmap,   only:get_mass_r,rho_func
  use spherical,    only:set_sphere
  use mpidomain,    only:i_belong
- use infile_utils, only:get_options
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: xyzh(:,:)
  real,    intent(inout) :: vxyzu(:,:)
  real,    intent(inout) :: massoftype(:)
- integer                       :: i,ierr,iunit,iprof
+ integer                       :: i,iunit,iprof
  integer                       :: np_sphere,npart_old
  real                          :: totmass,delta,r,rhofr,presi
- character(len=120)            :: setfile
  logical                       :: read_temp
  real, allocatable             :: masstab(:),temp_prof(:)
- character(len=15), parameter  :: default_name = 'default_profile'
  real, dimension(7), parameter :: dens_prof_default = (/8.9e-21, 5.1e-21, 3.3e-21, 2.6e-21, &
                                                         6.6e-25, 3.4e-25, 8.1e-26/), &
                                   rad_prof_default = (/8.7e16, 1.2e17, 1.4e17, 2.0e17, &
                                                        4.0e17, 4.8e17, 7.1e17/) ! profile from Cendes+2021
  procedure(rho_func), pointer  :: rhof
 
- !--Set default values
- temperature       = 10.           ! Temperature in Kelvin
- mu                = 1.            ! mean molecular weight
- ieos_in           = 2
- ignore_radius     = 1.e14          ! in cm
- use_func          = .true.
- remove_overlap    = .true.
- !--Power law default setups
- rad_max           = 7.1e16        ! in cm
- rad_min           = 8.7e15        ! in cm
- nbreak            = 1
- rhof_rho0         = 1.e4*mu*mass_proton_cgs
- if (allocated(rhof_n)) deallocate(rhof_n)
- if (allocated(rhof_rbreak)) deallocate(rhof_rbreak)
- allocate(rhof_n(nbreak),rhof_rbreak(nbreak))
- rhof_n            = -1.7
- rhof_rbreak       = rad_min
- m_target          = dot_product(npartoftype,massoftype)*umass/solarm
- m_threshold       = 1.e-3
-
- !--Profile default setups
- read_temp         = .false.
- profile_filename  = default_name
- nprof             = 7
- interpolation     = 'log'
-
- !--Read values from the prefix.moddump file (or write a template and stop).
- !  Changing nbreak/use_func makes the required options change, so an
- !  incomplete file is topped up and the user is asked to edit and rerun.
- setfile = trim(fileprefix)//'.moddump'
- call get_options(setfile,id==master,ierr,read_moddumpfile,write_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ read_temp = .false.
 
  !--allocate memory
  if (use_func) then
@@ -213,7 +186,6 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  np_sphere = nint(totmass/massoftype(igas))
  call set_sphere('random',id,master,rad_min,rad_max,delta,hfact_default,npart,xyzh, &
                  rhofunc=rhof,nptot=npart_total,exactN=.true.,np_requested=np_sphere,mask=i_belong)
- if (ierr /= 0) call fatal('moddump','error setting up the circumnuclear gas cloud')
 
  npartoftype(igas) = npart
  !--Set particle properties
@@ -405,8 +377,8 @@ end subroutine calc_rho0
 !  write parameters to the .moddump file
 !+
 !----------------------------------------------------------------
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
  integer            :: i
@@ -465,14 +437,14 @@ subroutine write_moddumpfile(filename)
 
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !----------------------------------------------------------------
 !+
 !  Read parameters from the .moddump file
 !+
 !----------------------------------------------------------------
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -520,6 +492,43 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+ ! Keep the serialised profile in input units before modify_dump converts it.
+ if (use_func .and. nerr == 0) then
+    rhof_n = rhof_n_in(1:nbreak)
+    rhof_rbreak = rhof_rbreak_in(1:nbreak)
+ endif
+
+end subroutine read_moddump
+
+subroutine init_moddump()
+ use part, only:npartoftype,massoftype
+ use units, only:umass
+ use physcon, only:solarm,mass_proton_cgs
+
+ !--Set default values
+ temperature       = 10.           ! Temperature in Kelvin
+ mu                = 1.            ! mean molecular weight
+ ieos_in           = 2
+ ignore_radius     = 1.e14          ! in cm
+ use_func          = .true.
+ remove_overlap    = .true.
+ !--Power law default setups
+ rad_max           = 7.1e16        ! in cm
+ rad_min           = 8.7e15        ! in cm
+ nbreak            = 1
+ rhof_rho0         = 1.e4*mu*mass_proton_cgs
+ if (allocated(rhof_n)) deallocate(rhof_n)
+ if (allocated(rhof_rbreak)) deallocate(rhof_rbreak)
+ allocate(rhof_n(nbreak),rhof_rbreak(nbreak))
+ rhof_n            = -1.7
+ rhof_rbreak       = rad_min
+ m_target          = dot_product(npartoftype,massoftype)*umass/solarm
+ m_threshold       = 1.e-3
+
+ !--Profile default setups
+ profile_filename  = default_name
+ nprof             = 7
+ interpolation     = 'log'
+end subroutine init_moddump
 
 end module moddump

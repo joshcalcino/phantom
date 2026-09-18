@@ -15,29 +15,32 @@ module moddump
 ! :Runtime parameters:
 !   - omega : *angular frequency of solid body rotation about the z-axis*
 !
-! :Dependencies: infile_utils, io, prompting
+! :Dependencies: infile_utils, moddump_utils, prompting
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
  ! runtime parameter
  real :: omega = 7.92e-3   ! angular frequency of solid body rotation about the z-axis
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use io,           only:id,master,fileprefix
- use infile_utils, only:get_options
+
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
  real                   :: vphi,R
- integer                :: i,ierr
+ integer                :: i
 
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  ! Assume rotation axis is the z-axis
  print*,"Adding solid body rotation with omega = ",omega
@@ -59,7 +62,7 @@ subroutine read_interactive_moddumpfile()
 
 end subroutine read_interactive_moddumpfile
 
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -74,10 +77,10 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 23
 
@@ -87,6 +90,6 @@ subroutine write_moddumpfile(filename)
  call write_inopt(omega,'omega','angular frequency of solid body rotation about the z-axis',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 end module moddump

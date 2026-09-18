@@ -15,26 +15,31 @@ module moddump
 ! :Runtime parameters:
 !   - outer_radius : *radius within which to taper the dust fraction [code units]*
 !
-! :Dependencies: dim, infile_utils, io, part, prompting
+! :Dependencies: dim, infile_utils, moddump_utils, part, prompting
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
  ! runtime parameter (written to / read from the prefix.moddump file)
  real :: outer_radius = 10.   ! radius within which to taper the dust fraction [code units]
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use dim,           only:use_dust
- use part,          only:igas,idust,set_particle_type,ndusttypes,dustfrac
- use io,            only:id,master,fileprefix
- use infile_utils,  only:get_options
+ use part,          only:igas,ndusttypes,dustfrac
+
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- integer :: i,np_gas,ierr
+ integer :: i,np_gas
  real    :: dust_to_gas,r_g
 
  if (.not. use_dust) then
@@ -44,9 +49,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  dust_to_gas = 0.01
 
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  !- grainsize and graindens already set if convert from one fluid to two fluid with growth
  np_gas = npartoftype(igas)
@@ -79,7 +82,7 @@ subroutine read_interactive_moddumpfile()
 
 end subroutine read_interactive_moddumpfile
 
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -94,10 +97,10 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 23
 
@@ -107,6 +110,6 @@ subroutine write_moddumpfile(filename)
  call write_inopt(outer_radius,'outer_radius','radius within which to taper the dust fraction [code units]',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 end module moddump

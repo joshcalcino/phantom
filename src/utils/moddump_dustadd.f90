@@ -40,9 +40,11 @@ module moddump
 !   - smaxcgs         : *maximum grain size [cm]*
 !   - smincgs         : *minimum grain size [cm]*
 !
-! :Dependencies: dim, dust, growth, infile_utils, io, options, part,
-!   prompting, set_dust, units
+! :Dependencies: dim, dust, growth, infile_utils, io, moddump_utils,
+!   options, part, prompting, set_dust, units
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -70,25 +72,28 @@ module moddump
  real    :: outcenter(3) = 0.
  integer :: iremoveparttype = 0    ! 0=all, 1=gas only, 2=dust only
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use dim,          only:use_dust,maxdusttypes,maxdustlarge,maxdustsmall,use_dustgrowth,&
+ use dim,          only:use_dust,maxdusttypes,maxdustlarge,maxdustsmall,use_dustgrowth, &
                         update_max_sizes
- use part,         only:igas,idust,set_particle_type,ndusttypes,ndustsmall,ndustlarge,&
+ use part,         only:igas,idust,set_particle_type,ndusttypes,ndustsmall,ndustlarge, &
                         grainsize,graindens,dustfrac,delete_particles_outside_sphere
  use set_dust,     only:set_dustfrac,set_dustbinfrac
  use options,      only:use_dustfrac,use_porosity
  use growth,       only:set_dustprop,convert_to_twofluid,iporosity_growth=>iporosity
  use dust,         only:grainsizecgs,graindenscgs
  use units,        only:umass,udist
- use io,           only:id,master,fileprefix,fatal
- use infile_utils, only:get_options
+ use io,           only:fatal
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- integer :: i,j,itype,ipart,iloc,np_gas,np_dust,maxdust,iremovetype,ierr
+ integer :: i,j,itype,ipart,iloc,np_gas,np_dust,maxdust,iremovetype
  real    :: dustbinfrac(maxdusttypes),udens
 
  if (.not. use_dust) then
@@ -107,11 +112,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  graindenscgs = 3.
 
  !
- !--read the moddump parameters (or write a template and stop)
+ !--prompt only when the driver did not find a parameter file
  !
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  ndusttypes = ngrainsizes
  iporosity_growth = iporosity
@@ -311,8 +314,8 @@ end subroutine read_interactive_moddumpfile
 !  write options to .moddump file
 !+
 !----------------------------------------------------------------
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  use dim,          only:use_dustgrowth
  use options,      only:use_dustfrac
  character(len=*), intent(in) :: filename
@@ -370,14 +373,14 @@ subroutine write_moddumpfile(filename)
 
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !----------------------------------------------------------------
 !+
 !  read options from .moddump file
 !+
 !----------------------------------------------------------------
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  use dim,          only:use_dustgrowth
  use options,      only:use_dustfrac
@@ -438,6 +441,6 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
 end module moddump

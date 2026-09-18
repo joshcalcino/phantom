@@ -39,10 +39,11 @@ module moddump
 !   - tfact              : *tfact*
 !   - v_inf              : *velocity at infinity [km/s]*
 !
-! :Dependencies: centreofmass, datafiles, dim, eos, infile_utils, io,
-!   kernel, options, part, partinject, physcon, prompting, setvfield,
+! :Dependencies: datafiles, dim, eos, infile_utils, io, kernel,
+!   moddump_utils, options, part, partinject, physcon, prompting,
 !   spherical, stretchmap, units, vectorutils, velfield
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -58,27 +59,29 @@ module moddump
  real    :: m_gas = 0.0
  integer :: ieos_infall = 6
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use dim,            only:use_dust,maxdusttypes,maxdustlarge,maxdustsmall,use_dustgrowth
+ use dim,            only:use_dust
  use partinject,     only:add_or_update_particle
  use options,        only:use_dustfrac
- use part,           only:igas,isdead_or_accreted,xyzmh_ptmass,nptmass,ihacc,ihsoft,gravity,&
+ use part,           only:igas,xyzmh_ptmass,nptmass,gravity, &
                           dustfrac
  use units,          only:udist,utime,get_G_code
- use io,             only:id,master,fatal,fileprefix
+ use io,             only:id,master,fatal
  use spherical,      only:set_sphere,set_ellipse
  use stretchmap,     only:rho_func
  use kernel,         only:hfact_default
- use physcon,        only:pi,mass_proton_cgs,au
+ use physcon,        only:pi,au
  use vectorutils,    only:cross_product3D,rotatevec
- use centreofmass,   only:reset_centreofmass,get_total_angular_momentum
  use eos,            only:ieos,isink,get_spsound
  use velfield,       only:set_velfield_from_cubes
  use datafiles,      only:find_phantom_datafile
- use setvfield,      only:normalise_vfield
- use infile_utils,   only:get_options
+
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
@@ -104,8 +107,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  character(len=120)           :: filex,filey,filez
  procedure(rho_func), pointer :: prhofunc
 
- ! local working variables (the runtime parameters keep their module-level
- ! values, set by get_options below, and must not be re-initialised here)
+ ! Local working variables; retain parameters read by the driver.
  big_omega = 0.
  tiny_number = 1e-4
  lrhofunc = .false.
@@ -125,14 +127,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  z0 = 0.
  vol_obj = 0.
 
- ! default sink the eos is centred on (eos module variable, used when ieos_infall=6)
- isink = 1
-
- ! read the prefix.moddump file; if it is absent prompt the user and write
- ! one (then stop), if it is incomplete top it up (then stop)
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ ! The driver has read the .moddump file; prompt only on the first run.
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  ! udist default is cm
  unit_velocity = udist/utime ! cm/s
@@ -410,9 +406,6 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  ! Rotate the new cloud into its final orientation before constructing an
  ! angular-momentum-balancing companion.  Applying the same proper rotation
  ! to position and velocity preserves the cloud structure and orbital energy.
- incx = incx*pi/180.
- incy = incy*pi/180.
- incz = incz*pi/180.
  do i = 1,n_add
     ! Rotate particle to correct position and velocity
     ! First rotate to get the right initial position
@@ -424,14 +417,14 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     endif
 
     ! Now rotate around x axis
-    call rotatevec(xyzh_add(1:3,i),(/1.,0.,0./),incx)
-    call rotatevec(vxyzu_add(1:3,i),(/1.,0.,0./),incx)
+    call rotatevec(xyzh_add(1:3,i),(/1.,0.,0./),incx*pi/180.)
+    call rotatevec(vxyzu_add(1:3,i),(/1.,0.,0./),incx*pi/180.)
 
-    call rotatevec(xyzh_add(1:3,i),(/0.,1.,0./),incy)
-    call rotatevec(vxyzu_add(1:3,i),(/0.,1.,0./),incy)
+    call rotatevec(xyzh_add(1:3,i),(/0.,1.,0./),incy*pi/180.)
+    call rotatevec(vxyzu_add(1:3,i),(/0.,1.,0./),incy*pi/180.)
 
-    call rotatevec(xyzh_add(1:3,i),(/0.,0.,1./),incz)
-    call rotatevec(vxyzu_add(1:3,i),(/0.,0.,1./),incz)
+    call rotatevec(xyzh_add(1:3,i),(/0.,0.,1./),incz*pi/180.)
+    call rotatevec(vxyzu_add(1:3,i),(/0.,0.,1./),incz*pi/180.)
  enddo
 
  if (sym_infall > 0) then
@@ -578,6 +571,7 @@ end function rhofunc
 subroutine read_interactive_moddumpfile()
  use prompting, only:prompt
  use eos,       only:isink
+ use part,      only:npartoftype,igas
 
  call prompt('Enter the infall material shape (0=sphere, 1=ellipse)',in_shape,0,1)
  call prompt('Enter cloud control mode (0=manual mass+size (rho not fixed), 1=mass/n_add set radius (fixed rho), '&
@@ -594,6 +588,7 @@ subroutine read_interactive_moddumpfile()
 
  if (cloud_control_mode == 0) then
     call prompt('Enter infall mass in Msun:', in_mass, 0.0)
+    if (npartoftype(igas) <= 0) call prompt('Enter number of particles to add:',n_add,1)
     call prompt('Enter value of power-law density along radius:', r_slope, 0.0)
     if (r_slope > 0.) call prompt('Enter softening radius:', r_soft, 0.1)
  elseif (cloud_control_mode == 1) then
@@ -639,8 +634,8 @@ end subroutine read_interactive_moddumpfile
 !  write the moddump parameters to the .moddump file
 !+
 !----------------------------------------------------------------
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  use eos,          only:isink
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 23
@@ -689,16 +684,16 @@ subroutine write_moddumpfile(filename)
 
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !----------------------------------------------------------------
 !+
 !  read the moddump parameters from the .moddump file; ierr counts
-!  missing or invalid options (so get_options can top up the file
+!  missing or invalid options (so get_moddump_options can top up the file
 !  and ask the user to edit it)
 !+
 !----------------------------------------------------------------
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  use eos,          only:isink
  character(len=*), intent(in)  :: filename
@@ -759,6 +754,12 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
+
+subroutine init_moddump()
+ use eos, only:isink
+
+ isink = 1
+end subroutine init_moddump
 
 end module moddump

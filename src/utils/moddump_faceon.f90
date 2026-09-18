@@ -16,8 +16,10 @@ module moddump
 !   - outer_radius : *radius from centre of mass within which to measure L*
 !   - system_type  : *1=single 2=binary 3=triple(inner) 4=triple(outer)*
 !
-! :Dependencies: infile_utils, io, part, prompting, vectorutils
+! :Dependencies: infile_utils, moddump_utils, part, prompting, vectorutils
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -25,18 +27,21 @@ module moddump
  integer :: system_type  = 2    ! 1=single/isink1, 2=binary, 3=triple (centred on binary), 4=triple (external)
  real    :: outer_radius = 400. ! radius from centre of mass within which to measure L
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use part,          only:igas,xyzmh_ptmass,vxyz_ptmass,nptmass
  use vectorutils,   only:rotatevec,cross_product3D
- use io,            only:id,master,fileprefix
- use infile_utils,  only:get_options
+
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- integer :: i,ierr
+ integer :: i
  real    :: radius,pmass
  real    :: Ltot(3),Lunit(3),z_axis(3),axis(3),angle
  real    :: centre_of_mass_sinks(3)
@@ -45,9 +50,7 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  pmass = massoftype(igas)
 
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  select case(system_type)
  case(1)
@@ -117,7 +120,7 @@ end subroutine read_interactive_moddumpfile
 !  read parameters from the .moddump file (ierr counts missing options)
 !+
 !-----------------------------------------------------------------------
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -133,15 +136,15 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
 !-----------------------------------------------------------------------
 !+
 !  write parameters to the .moddump file
 !+
 !-----------------------------------------------------------------------
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 23
 
@@ -152,6 +155,6 @@ subroutine write_moddumpfile(filename)
  call write_inopt(outer_radius,'outer_radius','radius from centre of mass within which to measure L',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 end module moddump

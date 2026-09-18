@@ -15,30 +15,33 @@ module moddump
 ! :Runtime parameters:
 !   - rho_threshold : *delete particles with density below this [code units]*
 !
-! :Dependencies: infile_utils, io, part, prompting
+! :Dependencies: infile_utils, io, moddump_utils, part, prompting
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
  ! runtime parameter (written to / read from the prefix.moddump file)
  real :: rho_threshold = 5e-8   ! delete particles with density below this [code units]
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use part,         only:rho,igas,kill_particle,shuffle_part
- use io,           only:fatal,id,master,fileprefix
- use infile_utils, only:get_options
+ use part,         only:rho,kill_particle,shuffle_part
+ use io,           only:fatal
  integer, intent(inout) :: npart
  integer, dimension(:), intent(inout) :: npartoftype
  real, dimension(:), intent(inout) :: massoftype
  real, dimension(:,:), intent(inout) :: xyzh,vxyzu
  real   :: rhoi
- integer :: i, compt, ierr
+ integer :: i, compt
 
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  compt = 0
  do i=1,npart
@@ -63,7 +66,7 @@ subroutine read_interactive_moddumpfile()
 
 end subroutine read_interactive_moddumpfile
 
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -78,10 +81,10 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 23
 
@@ -91,6 +94,6 @@ subroutine write_moddumpfile(filename)
  call write_inopt(rho_threshold,'rho_threshold','delete particles with density below this [code units]',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 end module moddump

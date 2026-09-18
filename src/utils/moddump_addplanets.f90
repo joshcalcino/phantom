@@ -15,9 +15,10 @@ module moddump
 ! :Runtime parameters:
 !   - nplanets : *number of planets to add*
 !
-! :Dependencies: centreofmass, infile_utils, io, part, physcon, prompting,
-!   units
+! :Dependencies: centreofmass, infile_utils, moddump_utils, part, physcon,
+!   prompting, units
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -28,20 +29,22 @@ module moddump
  integer :: nplanets = 1
  real    :: mplanet(maxplanets), rplanet(maxplanets), accrplanet(maxplanets)
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use part,              only:nptmass,xyzmh_ptmass,vxyz_ptmass,igas,ihacc,ihsoft
  use units,             only:umass,utime,udist,print_units
  use physcon,        only:au,solarm,jupiterm,pi,years
- use io,                only:id,master,fileprefix
- use centreofmass,      only:reset_centreofmass,get_centreofmass
- use infile_utils,      only:get_options
+ use centreofmass,      only:reset_centreofmass
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- integer :: i,j,ierr
+ integer :: i,j
  real    :: phi,vphi,sinphi,cosphi,omega,r2,disc_m_within_r,star_m
  real    :: rsinkmass(maxplanets+1)
 
@@ -74,19 +77,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  star_m = xyzmh_ptmass(4,1)
 ! print*,'Mass of central star: ', star_m
  !
- !--set defaults (unit-dependent, so done here before reading the file)
+ !--prompt only when the driver did not find a parameter file
  !
- do i=1,maxplanets
-    mplanet(i)    = 0.001
-    rplanet(i)    = 10.*i*au/udist
-    accrplanet(i) = 0.25*au/udist
- enddo
- !
- !--read the moddump parameters (or write a template and stop)
- !
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  print "(a,i2,a)",' --------- added ',nplanets,' planets ------------'
  do i=1,nplanets
@@ -146,8 +139,8 @@ end subroutine read_interactive_moddumpfile
 !
 !---Write the moddump parameter file----------------------------------------
 !
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
  integer :: i
@@ -163,12 +156,12 @@ subroutine write_moddumpfile(filename)
  enddo
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !
 !---Read the moddump parameter file-----------------------------------------
 !
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -189,7 +182,19 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
+
+subroutine init_moddump()
+ use physcon, only:au
+ use units, only:udist
+ integer :: i
+
+ do i=1,maxplanets
+    mplanet(i)    = 0.001
+    rplanet(i)    = 10.*i*au/udist
+    accrplanet(i) = 0.25*au/udist
+ enddo
+end subroutine init_moddump
 
 end module moddump
 

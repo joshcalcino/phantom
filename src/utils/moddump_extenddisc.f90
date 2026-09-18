@@ -17,9 +17,12 @@ module moddump
 !   - R_ext       : *outer radius of new (extended) disc*
 !   - disc_prefix : *prefix of the .discparams file to read*
 !
-! :Dependencies: centreofmass, eos, infile_utils, io, kernel, part,
-!   partinject, physcon, prompting, setdisc, vectorutils
+! :Dependencies: centreofmass, eos, infile_utils, io, kernel,
+!   moddump_utils, part, partinject, physcon, prompting, setdisc,
+!   vectorutils
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -27,19 +30,23 @@ module moddump
  character(len=120) :: disc_prefix = ''   ! prefix of the .discparams file
  real :: R_ext = 0.                       ! outer radius of extended disc
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use partinject, only:add_or_update_particle
- use part,       only:igas,isdead_or_accreted,xyzmh_ptmass,vxyz_ptmass,nptmass
+ use part,       only:igas,xyzmh_ptmass,vxyz_ptmass,nptmass
  use eos,        only:gamma,polyk
- use io,         only:id,master,fatal,fileprefix
+ use io,         only:id,master,fatal
  use kernel,     only:hfact_default
  use setdisc,    only:set_disc,get_disc_mass,scaled_sigma
  use physcon,    only:pi
  use vectorutils,only:rotatevec
- use centreofmass,   only:reset_centreofmass,get_total_angular_momentum
- use infile_utils,   only:open_db_from_file,inopts,read_inopt,close_db,get_options
+ use centreofmass,   only:reset_centreofmass
+ use infile_utils,   only:open_db_from_file,inopts,read_inopt,close_db
  integer, parameter :: iunit = 23
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
@@ -58,10 +65,8 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  logical :: iexist
  type(inopts), allocatable :: db(:)
 
- ! read the moddump parameters (or write a template and stop)
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ ! prompt only when the driver did not find a parameter file
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  infile = trim(disc_prefix)//'.discparams'
  inquire(file=trim(infile),exist=iexist)
@@ -235,8 +240,8 @@ end subroutine read_interactive_moddumpfile
 !
 !---Write the moddump parameter file----------------------------------------
 !
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iu = 24
 
@@ -247,12 +252,12 @@ subroutine write_moddumpfile(filename)
  call write_inopt(R_ext,'R_ext','outer radius of new (extended) disc',iu)
  close(iu)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !
 !---Read the moddump parameter file-----------------------------------------
 !
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -269,6 +274,6 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
 end module moddump

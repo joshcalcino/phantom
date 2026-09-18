@@ -777,9 +777,16 @@ ifndef MODDUMPBIN
 MODDUMPBIN=phantommoddump
 endif
 OBJMOD1 = ${OBJSETSTAR} eos_stamatellos.o velfield_fromcubes.o set_vfield.o\
-          set_disc.o set_Bfield.o utils_omp.o\
+          set_disc.o set_Bfield.o utils_omp.o moddump_utils.o\
 	  ${MODFILE:.f90=.o} phantom_moddump.o
 OBJMOD = ${OBJMOD1:.F90=.o}
+
+# Each modifier produces moddump.mod. Rebuild it and the driver when switching MODFILE.
+MODDUMP_OBJS = $(filter-out moddump_utils.o,$(filter moddump_%.o,$(OBJMOD)))
+.PHONY: force_moddump
+force_moddump:
+$(MODDUMP_OBJS): moddump_utils.o force_moddump
+phantom_moddump.o: $(MODDUMP_OBJS) moddump_utils.o force_moddump
 
 phantom_moddump: checksystem checkparams libphantom libsetup $(OBJMOD)
 	@echo ""
@@ -809,7 +816,7 @@ mcfost_env.o: checkmcfost $(MCFOST_DIR)/src/mcfost_env.f90
 .PHONY: allmoddumps
 allmoddumps:
 	@echo "Building all moddumps"
-	@for file in $(wildcard ../src/utils/moddump_*.f90); do \
+	@for file in $(filter-out ../src/utils/moddump_utils.f90,$(wildcard ../src/utils/moddump_*.f90)); do \
 	   echo "Building $$file"; \
        modfile=$$(basename $$file); \
        case $$modfile in \

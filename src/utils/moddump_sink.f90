@@ -22,9 +22,11 @@ module moddump
 !   - racc        : *new accretion radius for the sink [code units]*
 !   - reset_cm    : *reset centre of mass*
 !
-! :Dependencies: centreofmass, infile_utils, io, part, prompting,
-!   ptmass_heating, units
+! :Dependencies: centreofmass, infile_utils, moddump_utils, part,
+!   prompting, ptmass_heating, units
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -37,17 +39,20 @@ module moddump
  real    :: newx     = 0.          ! new x-coordinate [code units]
  real    :: Lnuc_cgs = 0.          ! new sink heating luminosity [erg/s]
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use part,           only:xyzmh_ptmass,vxyz_ptmass,nptmass,ihacc,ihsoft,ilum
  use centreofmass,   only:reset_centreofmass
  use units,          only:unit_energ,utime
- use io,             only:id,master,fileprefix
- use infile_utils,   only:get_options
+
  integer, intent(inout) :: npart,npartoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:),massoftype(:)
- integer                :: i,ierr
+ integer                :: i
 
  print*,'Sink particles in dump:'
  do i=1,nptmass
@@ -66,12 +71,10 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     endif
  enddo
  !
- ! read the moddump parameters (or write a template and stop)
+ ! prompt only when the driver did not find a parameter file
  ! (edits a single sink; rerun to modify additional sinks)
  !
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  if (isinkpart > 0 .and. isinkpart <= nptmass) then
     if (delete_sink) then
@@ -144,8 +147,8 @@ end subroutine read_interactive_moddumpfile
 !
 !---Write the moddump parameter file----------------------------------------
 !
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
 
@@ -162,12 +165,12 @@ subroutine write_moddumpfile(filename)
  call write_inopt(reset_CM,'reset_cm','reset centre of mass',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !
 !---Read the moddump parameter file-----------------------------------------
 !
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -190,6 +193,6 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
 end module moddump

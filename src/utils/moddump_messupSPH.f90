@@ -17,8 +17,11 @@ module moddump
 !   - inside  : *randomize inside (T) or outside (F) the Hill sphere (ioption=2)*
 !   - ioption : *operation (1=randomize azimuth, 2=randomize gap, 3=delete Hill sphere)*
 !
-! :Dependencies: infile_utils, io, mess_up_SPH, part, prompting, units
+! :Dependencies: infile_utils, mess_up_SPH, moddump_utils, part, prompting,
+!   units
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -26,28 +29,29 @@ module moddump
  real    :: factor  = 1.0          ! gap randomization factor (ioption=2)
  logical :: inside  = .false.      ! randomize inside/outside the Hill sphere (ioption=2)
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use mess_up_SPH ! module from MCFOST
  use part,      only:xyzmh_ptmass,nptmass,kill_particle,shuffle_part
  use units,     only:udist
- use io,        only:id,master,fileprefix
- use infile_utils, only:get_options
+
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
  integer, allocatable :: mask(:)
- integer :: i,ierr
+ integer :: i
 
  print*,'udist=',udist
  !
- ! read the moddump parameters (or write a template and stop)
+ ! prompt only when the driver did not find a parameter file
  !
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  allocate(mask(npart))
  mask = 0
@@ -95,8 +99,8 @@ end subroutine read_interactive_moddumpfile
 !
 !---Write the moddump parameter file----------------------------------------
 !
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
 
@@ -108,12 +112,12 @@ subroutine write_moddumpfile(filename)
  call write_inopt(inside,'inside','randomize inside (T) or outside (F) the Hill sphere (ioption=2)',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !
 !---Read the moddump parameter file-----------------------------------------
 !
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -131,7 +135,7 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
 end module moddump
 

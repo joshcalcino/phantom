@@ -28,8 +28,10 @@ module moddump
 !   - theta                : *stellar rotation with respect to y-axis (in degrees)*
 !
 ! :Dependencies: centreofmass, dim, externalforces, infile_utils, io,
-!   metric, options, orbits, part, physcon, setbinary, units, vectorutils
+!   metric, moddump_utils, options, orbits, part, physcon, setbinary,
+!   units, vectorutils
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -50,6 +52,10 @@ module moddump
  integer, public :: iorigin  ! which black hole to use for the origin
  logical, public :: use_binary,use_sink
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .false.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
@@ -58,15 +64,14 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use externalforces, only:accradius1,accradius1_hard
  use options,        only:iexternalforce
  use dim,            only:gr
- use physcon,        only:pi,solarm,solarr
- use units,          only:umass,udist,get_c_code
+ use physcon,        only:pi
+ use units,          only:get_c_code
  use metric,         only:a
  use orbits,         only:isco_kerr
  use vectorutils,    only:rotatevec
  use setbinary,      only:set_binary
  use part,           only:nptmass,xyzmh_ptmass,vxyz_ptmass,ihacc,ihsoft
- use io,             only:fatal,id,master,fileprefix
- use infile_utils,   only:get_options
+ use io,             only:fatal
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
@@ -85,36 +90,6 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 !
 !
  c_light        = get_c_code()
- beta  = 1.                  ! penetration factor
- Mh1   = 1.e6*solarm/umass   ! BH mass
- ms    = 1.  *solarm/umass   ! stellar mass
- rs    = 1.  *solarr/udist   ! stellar radius
- theta = 0.                  ! stellar tilting along x
- phi   = 0.                  ! stellar tilting along y
- ecc   = 1.                  ! eccentricity
- incline = 0.                ! inclination (in x-z plane)
- semimajoraxis_binary = 1000.*solarr/udist   !separation distance
- if (.not. gr) then
-    spin = 0.
- else
-    spin = 1. !upper limit on Sagitarrius A*'s spin is 0.1 (Fragione and Loeb 2020)'
- endif
- Mh2        = 1.e6*solarm/umass !setting mass of a second BH
- ecc_binary = 1.                !Eccentricity of the binary system
- m0 = Mh1
- rt = (m0/ms)**(1./3.) * rs
-
- ! setting a default r0 value
- r0 = 10*rt
-
- ! default parameters for binary (overwritten from the .moddump file)
- use_binary = .false.
- use_sink = .false.
- iorigin = 0
-
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
 
  print*,"--------------------------------------------"
  print*,use_binary,"use_binary"
@@ -296,8 +271,8 @@ end subroutine modify_dump
 !
 !---Read/write moddump file------------------------------------------------
 !
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  use dim,          only:gr
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
@@ -329,11 +304,10 @@ subroutine write_moddumpfile(filename)
  endif
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
- use io,           only:error
  use dim,          only:gr
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -370,7 +344,7 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
 subroutine get_angmom(ltot,npart,xyzh,vxyzu)
  real,    intent(out) :: ltot(3)
@@ -395,5 +369,39 @@ subroutine get_angmom(ltot,npart,xyzh,vxyzu)
  print*,''
 
 end subroutine get_angmom
+
+subroutine init_moddump()
+ use physcon, only:solarm,solarr
+ use units, only:umass,udist
+ use dim, only:gr
+ real :: m0,rt
+
+ beta  = 1.                  ! penetration factor
+ Mh1   = 1.e6*solarm/umass   ! BH mass
+ ms    = 1.  *solarm/umass   ! stellar mass
+ rs    = 1.  *solarr/udist   ! stellar radius
+ theta = 0.                  ! stellar tilting along x
+ phi   = 0.                  ! stellar tilting along y
+ ecc   = 1.                  ! eccentricity
+ incline = 0.                ! inclination (in x-z plane)
+ semimajoraxis_binary = 1000.*solarr/udist   !separation distance
+ if (.not. gr) then
+    spin = 0.
+ else
+    spin = 1. !upper limit on Sagitarrius A*'s spin is 0.1 (Fragione and Loeb 2020)'
+ endif
+ Mh2        = 1.e6*solarm/umass !setting mass of a second BH
+ ecc_binary = 1.                !Eccentricity of the binary system
+ m0 = Mh1
+ rt = (m0/ms)**(1./3.) * rs
+
+ ! setting a default r0 value
+ r0 = 10*rt
+
+ ! default parameters for binary (overwritten from the .moddump file)
+ use_binary = .false.
+ use_sink = .false.
+ iorigin = 0
+end subroutine init_moddump
 
 end module moddump

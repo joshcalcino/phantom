@@ -22,9 +22,11 @@ module moddump
 !   - synchro         : *synchronise the binary rotation to the orbit*
 !
 ! :Dependencies: centreofmass, checkconserved, dim, extern_gwinspiral,
-!   externalforces, infile_utils, io, options, part, physcon, prompting,
-!   readwrite_dumps, timestep, units
+!   externalforces, infile_utils, io, moddump_utils, options, part,
+!   physcon, prompting, readwrite_dumps, timestep, units
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -37,10 +39,14 @@ module moddump
  real    :: omega_outer = 0.014! angular velocity at surface
  character(len=120) :: second_dumpfile = ''  ! name of second dumpfile to add
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use part,           only:nptmass,xyzmh_ptmass,vxyz_ptmass,igas,set_particle_type,igas,mhd
+ use part,           only:nptmass,xyzmh_ptmass,vxyz_ptmass,igas,igas,mhd
  use centreofmass,   only:reset_centreofmass,get_centreofmass
  use physcon,        only:c
  use units,          only:unit_velocity
@@ -48,13 +54,12 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use checkconserved, only:get_conserv
  use options,        only:iexternalforce
  use externalforces, only:iext_gwinspiral
- use io,             only:id,master,fileprefix
- use infile_utils,   only:get_options
+
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- integer :: opt, Nstar1, Nstar2, ierr
+ integer :: opt, Nstar1, Nstar2
  real :: mtot,angvel,vel1,vel2
  real :: xcom(3), vcom(3), x1com(3), v1com(3), x2com(3), v2com(3)
  real :: pmassi,m1,m2,rad1,rad2
@@ -63,11 +68,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 
  print *, 'Running moddump_binarystar:'
  !
- ! read the moddump parameters (or write a template and stop)
+ ! prompt only when the driver did not find a parameter file
  !
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  add_gw = .false.
  add_v  = .false.
@@ -244,8 +247,8 @@ end subroutine read_interactive_moddumpfile
 !
 !---Write the moddump parameter file----------------------------------------
 !
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
 
@@ -263,12 +266,12 @@ subroutine write_moddumpfile(filename)
  call write_inopt(second_dumpfile,'second_dumpfile','name of second dumpfile to add (ioperation/icreate=2)',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !
 !---Read the moddump parameter file-----------------------------------------
 !
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -291,14 +294,14 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
 !
 ! Take the star from the input file and duplicate it some distance apart.
 ! This assumes the dump file only has one star.
 !
 subroutine duplicate_star(npart,npartoftype,xyzh,vxyzu,Nstar1,Nstar2)
- use part,         only:igas,set_particle_type,copy_particle
+ use part,         only:igas,copy_particle
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
@@ -340,8 +343,8 @@ end subroutine duplicate_star
 ! Place a star that is read from another dumpfile
 !
 subroutine add_star(npart,npartoftype,xyzh,vxyzu,Nstar1,Nstar2)
- use part,            only: igas,set_particle_type,eos_vars,alphaind,maxeosvars
- use dim,             only: maxp,maxvxyzu,nalpha,maxalpha
+ use part,            only:igas,set_particle_type,eos_vars,alphaind,maxeosvars
+ use dim,             only:maxp,maxvxyzu,nalpha,maxalpha
  use readwrite_dumps, only:read_dump
  use io,              only:idisk1,iprint
  integer, intent(inout) :: npart

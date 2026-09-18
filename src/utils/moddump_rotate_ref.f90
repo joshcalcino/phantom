@@ -18,8 +18,11 @@ module moddump
 !   - ref_Omega : *reference position angle [deg]*
 !   - ref_incl  : *reference inclination [deg]*
 !
-! :Dependencies: infile_utils, io, part, physcon, prompting, vectorutils
+! :Dependencies: infile_utils, moddump_utils, part, physcon, prompting,
+!   vectorutils
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -29,14 +32,17 @@ module moddump
  real :: ref_incl  = 54.6     ! reference inclination (disc rotated into this plane)
  real :: ref_Omega = 53.0     ! reference position angle
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use physcon,              only:pi
  use part,                 only:xyzmh_ptmass,vxyz_ptmass,nptmass
  use vectorutils,          only:rotatevec
- use io,                   only:id,master,fileprefix
- use infile_utils,         only:get_options
+
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
@@ -46,11 +52,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  real                   :: temp_x,temp_y,temp_z
  real                   :: temp_vx,temp_vy,temp_vz
  real                   :: temp(3),temp_v(3)
- integer                :: j,ierr
+ integer                :: j
 
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  ! Rotation angles & coeffs
  alpha = (ref_incl - incl) *pi/180    !about x
@@ -163,7 +167,7 @@ subroutine read_interactive_moddumpfile()
 
 end subroutine read_interactive_moddumpfile
 
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -181,10 +185,10 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 23
 
@@ -197,6 +201,6 @@ subroutine write_moddumpfile(filename)
  call write_inopt(ref_Omega,'ref_Omega','reference position angle [deg]',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 end module moddump

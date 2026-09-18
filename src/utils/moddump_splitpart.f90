@@ -16,8 +16,10 @@ module moddump
 !   - lattice_type : *child arrangement (0=regular lattice, 1=random)*
 !   - nchild       : *number of children per particle (>= 2; forced to 13 for lattice)*
 !
-! :Dependencies: infile_utils, io, part, prompting, splitpart
+! :Dependencies: infile_utils, moddump_utils, part, prompting, splitpart
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -25,22 +27,21 @@ module moddump
  integer :: nchild       = 13   ! number of children per particle
  integer :: lattice_type = 0    ! 0 for regular lattice, 1 for random
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use splitpart,    only:split_all_particles
- use io,           only:fatal,error,id,master,fileprefix
  use part,         only:delete_dead_or_accreted_particles
- use infile_utils, only:get_options
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- integer :: ierr
 
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  !-- the regular lattice requires a specific number of children
  if (lattice_type == 0) nchild = 13
@@ -72,7 +73,7 @@ subroutine read_interactive_moddumpfile()
 
 end subroutine read_interactive_moddumpfile
 
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -88,10 +89,10 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 23
 
@@ -102,6 +103,6 @@ subroutine write_moddumpfile(filename)
  call write_inopt(nchild,'nchild','number of children per particle (>= 2; forced to 13 for lattice)',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 end module moddump

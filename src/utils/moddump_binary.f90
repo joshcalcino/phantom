@@ -51,10 +51,12 @@ module moddump
 !   - vel_shift            : *velocity to add in the direction of the primary [code units]*
 !
 ! :Dependencies: centreofmass, dim, eos, extern_corotate,
-!   extern_gwinspiral, externalforces, infile_utils, io, options, part,
-!   physcon, prompting, readwrite_dumps, readwrite_mesa, setbinary,
-!   table_utils, timestep, units, vectorutils
+!   extern_gwinspiral, externalforces, infile_utils, io, moddump_utils,
+!   options, part, physcon, prompting, readwrite_dumps, readwrite_mesa,
+!   setbinary, table_utils, timestep, units, vectorutils
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -121,26 +123,30 @@ module moddump
  integer :: iproperty = 0
  real    :: propval   = 0.
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use part,              only:nptmass,xyzmh_ptmass,vxyz_ptmass,ihacc,ihsoft,igas,&
+ use part,              only:nptmass,xyzmh_ptmass,vxyz_ptmass,ihacc,ihsoft,igas, &
                              delete_dead_or_accreted_particles,mhd,rho,shuffle_part,&
                              kill_particle,copy_particle
  use setbinary,         only:set_binary
- use units,             only:umass,udist,utime
- use physcon,           only:au,solarm,solarr,gg,pi
- use centreofmass,      only:reset_centreofmass,get_centreofmass
+ use units,             only:utime
+ use physcon,           only:pi
+ use centreofmass,      only:reset_centreofmass
  use options,           only:iexternalforce
  use externalforces,    only:omega_corotate,iext_corotate,iext_gwinspiral
- use extern_corotate,   only:icompanion_grav,companion_xpos,companion_mass_ext=>companion_mass,&
+ use extern_corotate,   only:icompanion_grav,companion_xpos,companion_mass_ext=>companion_mass, &
                              primarycore_xpos,primarycore_mass,primarycore_hsoft,hsoft
  use extern_gwinspiral, only:Nstar_gw
- use infile_utils,      only:open_db_from_file,inopts,read_inopt,close_db,get_options
+ use infile_utils,      only:open_db_from_file,inopts,read_inopt,close_db
  use table_utils,       only:yinterp
  use readwrite_mesa,    only:read_mesa
  use dim,               only:maxptmass,maxp,nsinkproperties
- use io,                only:fatal,idisk1,iprint,id,master,fileprefix
+ use io,                only:fatal,idisk1,iprint
  use timestep,          only:tmax,dtmax
  use readwrite_dumps,   only:read_dump
  use eos,               only:X_in,Z_in
@@ -162,11 +168,9 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  type(inopts), allocatable :: db(:)
 
  !
- ! read the moddump parameters (or write a template and stop)
+ ! prompt only when the driver did not find a parameter file
  !
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  !
  ! validate that the requested operation is compatible with the sink count
@@ -721,8 +725,8 @@ end subroutine read_interactive_moddumpfile
 !  write options to .moddump file
 !+
 !----------------------------------------------------------------
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
 
@@ -796,14 +800,14 @@ subroutine write_moddumpfile(filename)
 
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !----------------------------------------------------------------
 !+
 !  read options from .moddump file
 !+
 !----------------------------------------------------------------
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  use dim,          only:nsinkproperties
  character(len=*), intent(in)  :: filename
@@ -882,7 +886,7 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
 !----------------------------------------------------------------
 !+

@@ -17,10 +17,12 @@ module moddump
 !   - do_trim : *trim off stray particles outside a radius*
 !   - rmax    : *outer radius to trim to [au] (used if do_trim=T)*
 !
-! :Dependencies: boundary, centreofmass, dim, dynamic_dtmax, eos,
-!   infile_utils, io, part, physcon, prompting, readwrite_dumps, timestep,
+! :Dependencies: centreofmass, dim, dynamic_dtmax, eos, infile_utils,
+!   moddump_utils, part, physcon, prompting, readwrite_dumps, timestep,
 !   units
 !
+ use moddump_utils, only:prompt_for_params,write_moddump_header, &
+                         init_moddump=>init_moddump_empty
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
 
@@ -28,38 +30,39 @@ module moddump
  logical :: do_trim  = .false.  ! trim off stray particles
  real    :: rmax     = 0.       ! outer radius to trim to in au
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .true.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use boundary,  only:set_boundary
+
  use eos,       only:gamma
  use dim,       only:maxtypes
- use units,     only:udist,unit_velocity,print_units,set_units,utime,umass,&
+ use units,     only:udist,unit_velocity,print_units,set_units,utime,umass, &
                      unit_energ,set_units_extra,unit_ergg
- use part,      only:ihsoft,ihacc,nptmass,xyzmh_ptmass,vxyz_ptmass,iphase,&
+ use part,      only:ihsoft,ihacc,nptmass,xyzmh_ptmass,vxyz_ptmass,iphase, &
                      igas,istar,iamtype,delete_particles_outside_sphere
- use io,              only:id,master,fileprefix
+
  use physcon,         only:au,gg
  use readwrite_dumps, only:dt_read_in
  use timestep,        only:time,dt
  use dynamic_dtmax,   only:dtmax_max,dtmax_min
  use centreofmass,    only:reset_centreofmass
- use infile_utils,    only:get_options
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real :: massoftype(:)
  real :: xyzh(:,:), vxyzu(:,:)
- integer :: iunit=26,j,npt,ierr
+ integer :: iunit=26,j,npt
  integer :: i,gascount=0,sinkcount=0,othercount=0
  real    :: newutime,newuvel,temperature1,temperature2
 
  print*,' *** Importing sphNG dump file ***'
  !
- ! read the moddump parameters (or write a template and stop)
+ ! prompt only when the driver did not find a parameter file
  !
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
+ if (prompt_for_params) call read_interactive_moddumpfile()
 
  call print_units
  print *, 'setting gamma=5/3...'
@@ -209,8 +212,8 @@ end subroutine read_interactive_moddumpfile
 !
 !---Write the moddump parameter file----------------------------------------
 !
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+ use infile_utils, only:write_inopt
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
 
@@ -222,12 +225,12 @@ subroutine write_moddumpfile(filename)
  call write_inopt(rmax,'rmax','outer radius to trim to [au] (used if do_trim=T)',iunit)
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
 !
 !---Read the moddump parameter file-----------------------------------------
 !
-subroutine read_moddumpfile(filename,ierr)
+subroutine read_moddump(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
@@ -245,7 +248,7 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
 
 real function calc_temp(u)
  use eos, only:gmw,gamma

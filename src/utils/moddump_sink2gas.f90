@@ -14,59 +14,35 @@ module moddump
 !
 ! :Runtime parameters: None
 !
-! :Dependencies: eos, infile_utils, io, mpidomain, part, setstar
+! :Dependencies: eos, infile_utils, io, moddump_utils, mpidomain, part,
+!   setstar
 !
  use eos,     only:ieos,gamma,X_in,Z_in,use_var_comp,polyk
  use setstar, only:set_stars,shift_stars,set_defaults_stars,star_t,write_options_stars,read_options_stars
+ use moddump_utils, only:prompt_for_params,write_moddump_header
  implicit none
  character(len=*), parameter, public :: moddump_flags = ''
  type(star_t), allocatable :: stars(:)
  logical :: relax = .true., write_rho_to_file = .false.
 
+ public :: init_moddump,read_moddump,write_moddump
+ logical, parameter :: moddump_interactive = .false.
+ public :: moddump_interactive
+
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use part,         only:nptmass,xyzmh_ptmass,vxyz_ptmass,ihacc,ihsoft,eos_vars,rad,hfact
- use io,           only:fatal,id,master,error,fileprefix
+ use part,         only:nptmass,xyzmh_ptmass,vxyz_ptmass,eos_vars,rad,hfact
+ use io,           only:id,master
  use mpidomain,    only:i_belong
- use infile_utils, only:get_options
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
  real, allocatable :: xyzmh_ptmass_in(:,:),vxyz_ptmass_in(:,:)
  integer(kind=8) :: npart_total
- integer :: ierr,nstars,i
+ integer :: ierr,nstars
  real    :: rhozero
- !
- ! check there are sink particles present
- !
- if (nptmass <= 0) then
-    call fatal('moddump','no sink particles present in file')
- endif
- !
- ! allocate blank options templates for each sink particle
- !
- allocate(stars(nptmass))
- call set_defaults_stars(stars)
- !
- ! fill in the mass and accretion radius for each body from sink
- ! particles already present. Also set the default option to iprofile=0
- ! which just preserves the body as a sink particle
- !
- stars(:)%iprofile = 0
- do i=1,nptmass
-    print*,'sink ',i,'m = ',xyzmh_ptmass(4,i),' h = ',xyzmh_ptmass(5,i)
-    write(stars(i)%m,"(es20.10)") xyzmh_ptmass(4,i)
-    write(stars(i)%hacc,"(es20.10)") xyzmh_ptmass(5,i)
- enddo
- !
- ! read the parameter file (or write a template and stop)
- !
- call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
-                  read_moddumpfile,write_moddumpfile)
- if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
-
  nstars = nptmass
  nptmass = 0
  !
@@ -93,8 +69,8 @@ end subroutine modify_dump
 !
 !---Read/write moddump file------------------------------------------------
 !
-subroutine write_moddumpfile(filename)
- use infile_utils, only:write_inopt,write_moddump_header
+subroutine write_moddump(filename)
+
  character(len=*), intent(in) :: filename
  integer, parameter :: iunit = 20
 
@@ -105,10 +81,10 @@ subroutine write_moddumpfile(filename)
  call write_options_stars(stars,relax,write_rho_to_file,ieos,iunit,nstar=size(stars))
  close(iunit)
 
-end subroutine write_moddumpfile
+end subroutine write_moddump
 
-subroutine read_moddumpfile(filename,ierr)
- use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
+subroutine read_moddump(filename,ierr)
+ use infile_utils, only:open_db_from_file,inopts,close_db
  character(len=*), intent(in)  :: filename
  integer,          intent(out) :: ierr
  integer, parameter :: iunit = 21
@@ -123,6 +99,32 @@ subroutine read_moddumpfile(filename,ierr)
  call close_db(db)
  if (nerr > 0) ierr = nerr
 
-end subroutine read_moddumpfile
+end subroutine read_moddump
+
+subroutine init_moddump()
+ use part, only:nptmass,xyzmh_ptmass
+ use io, only:fatal
+ integer :: i
+
+ if (nptmass <= 0) then
+    call fatal('moddump','no sink particles present in file')
+ endif
+ !
+ ! allocate blank options templates for each sink particle
+ !
+ allocate(stars(nptmass))
+ call set_defaults_stars(stars)
+ !
+ ! fill in the mass and accretion radius for each body from sink
+ ! particles already present. Also set the default option to iprofile=0
+ ! which just preserves the body as a sink particle
+ !
+ stars(:)%iprofile = 0
+ do i=1,nptmass
+    print*,'sink ',i,'m = ',xyzmh_ptmass(4,i),' h = ',xyzmh_ptmass(5,i)
+    write(stars(i)%m,"(es20.10)") xyzmh_ptmass(4,i)
+    write(stars(i)%hacc,"(es20.10)") xyzmh_ptmass(5,i)
+ enddo
+end subroutine init_moddump
 
 end module moddump
