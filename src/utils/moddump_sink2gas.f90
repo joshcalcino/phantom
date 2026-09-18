@@ -26,18 +26,17 @@ module moddump
 contains
 
 subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
- use part,      only:nptmass,xyzmh_ptmass,vxyz_ptmass,ihacc,ihsoft,eos_vars,rad,hfact
- use io,        only:fatal,id,master,error
- use mpidomain, only:i_belong
+ use part,         only:nptmass,xyzmh_ptmass,vxyz_ptmass,ihacc,ihsoft,eos_vars,rad,hfact
+ use io,           only:fatal,id,master,error,fileprefix
+ use mpidomain,    only:i_belong
+ use infile_utils, only:get_options
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- character(len=120)      :: filename
  real, allocatable :: xyzmh_ptmass_in(:,:),vxyz_ptmass_in(:,:)
  integer(kind=8) :: npart_total
  integer :: ierr,nstars,i
- logical :: iexist
  real    :: rhozero
  !
  ! check there are sink particles present
@@ -62,18 +61,11 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
     write(stars(i)%hacc,"(es20.10)") xyzmh_ptmass(5,i)
  enddo
  !
- ! read the parameter file if it exists
+ ! read the parameter file (or write a template and stop)
  !
- filename = 'sink2gas.moddump'
- inquire(file=filename,exist=iexist)
- if (iexist) call read_setupfile(filename,nptmass,ieos,ierr)
- if (.not. iexist .or. ierr /= 0) then
-    if (id==master) then
-       call write_setupfile(filename,nptmass)
-       print*,' Edit '//trim(filename)//' and rerun phantommoddump'
-    endif
-    stop
- endif
+ call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
+                  read_moddumpfile,write_moddumpfile)
+ if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
 
  nstars = nptmass
  nptmass = 0
@@ -99,43 +91,38 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
 end subroutine modify_dump
 
 !
-!---Read/write setup file--------------------------------------------------
+!---Read/write moddump file------------------------------------------------
 !
-subroutine write_setupfile(filename,nstars)
- use infile_utils, only:write_inopt
+subroutine write_moddumpfile(filename)
+ use infile_utils, only:write_inopt,write_moddump_header
  character(len=*), intent(in) :: filename
- integer,          intent(in) :: nstars
  integer, parameter :: iunit = 20
 
  print "(a)",' writing moddump params file '//trim(filename)
  open(unit=iunit,file=filename,status='replace',form='formatted')
- write(iunit,"(a)") '# parameter file for sink2star moddump'
- call write_options_stars(stars,relax,write_rho_to_file,ieos,iunit,nstar=nstars)
+ call write_moddump_header(iunit)
+ write(iunit,"(a)") '# parameter file for sink2gas moddump'
+ call write_options_stars(stars,relax,write_rho_to_file,ieos,iunit,nstar=size(stars))
  close(iunit)
 
-end subroutine write_setupfile
+end subroutine write_moddumpfile
 
-subroutine read_setupfile(filename,nstars,ieos,ierr)
+subroutine read_moddumpfile(filename,ierr)
  use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
- integer,          intent(in)    :: nstars
- integer,          intent(inout) :: ieos
- character(len=*), intent(in)    :: filename
- integer,          intent(out)   :: ierr
+ character(len=*), intent(in)  :: filename
+ integer,          intent(out) :: ierr
  integer, parameter :: iunit = 21
  integer :: nerr
  type(inopts), allocatable :: db(:)
 
  print "(a)",' reading moddump options from '//trim(filename)
  nerr = 0
- ierr = 0
  call open_db_from_file(db,filename,iunit,ierr)
+ if (ierr /= 0) return
  call read_options_stars(stars,ieos,relax,write_rho_to_file,db,nerr)
  call close_db(db)
- if (nerr > 0) then
-    print "(1x,i2,a)",nerr,' error(s) during read of moddump parameter file: re-writing...'
-    ierr = nerr
- endif
+ if (nerr > 0) ierr = nerr
 
-end subroutine read_setupfile
+end subroutine read_moddumpfile
 
 end module moddump

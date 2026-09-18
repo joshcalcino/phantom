@@ -13,7 +13,9 @@ module moddump
 !
 ! :Owner: Rebecca Nealon
 !
-! :Runtime parameters: None
+! :Runtime parameters:
+!   - R_ext       : *outer radius of new (extended) disc*
+!   - disc_prefix : *prefix of the .discparams file to read*
 !
 ! :Dependencies: centreofmass, eos, infile_utils, io, kernel, part,
 !   partinject, physcon, prompting, setdisc, vectorutils
@@ -22,6 +24,8 @@ module moddump
  character(len=*), parameter, public :: moddump_flags = ''
 
  integer, parameter :: nr = 200
+ character(len=120) :: disc_prefix = ''   ! prefix of the .discparams file
+ real :: R_ext = 0.                       ! outer radius of extended disc
 
 contains
 
@@ -29,25 +33,24 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  use partinject, only:add_or_update_particle
  use part,       only:igas,isdead_or_accreted,xyzmh_ptmass,vxyz_ptmass,nptmass
  use eos,        only:gamma,polyk
- use io,         only:id,master,fatal
+ use io,         only:id,master,fatal,fileprefix
  use kernel,     only:hfact_default
  use setdisc,    only:set_disc,get_disc_mass,scaled_sigma
  use physcon,    only:pi
  use vectorutils,only:rotatevec
- use prompting,      only:prompt
  use centreofmass,   only:reset_centreofmass,get_total_angular_momentum
- use infile_utils,   only:open_db_from_file,inopts,read_inopt,close_db
+ use infile_utils,   only:open_db_from_file,inopts,read_inopt,close_db,get_options
  integer, parameter :: iunit = 23
  integer, intent(inout) :: npart
  integer, intent(inout) :: npartoftype(:)
  real,    intent(inout) :: massoftype(:)
  real,    intent(inout) :: xyzh(:,:),vxyzu(:,:)
- character(len=40)      :: filename,infile
+ character(len=120)     :: infile
  real, allocatable :: xyzh_add(:,:),vxyzu_add(:,:)
  integer :: ii,ipart,n_killed,i,sigmaprofile,n_add,ii_match,ierr,jj
  real    :: hfact,pmass,R_match
  real    :: R_in,R_out,R_ref,q_value,p_value,HonR
- real    :: radius,R_c,add_mass_disc,R_ext
+ real    :: radius,R_c,add_mass_disc
  real    :: sigma_norm,star_m,toomre_min,enc_m(4096),dummy(4096)
  real    :: Ltot(3,nr),Lunit(3,nr),rad(nr),dr,area,sigma_match
  real    :: sigma(nr),tilt(nr),twist(nr),rotate_about_z,rotate_about_y
@@ -55,11 +58,12 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  logical :: iexist
  type(inopts), allocatable :: db(:)
 
- ! Prompt user for old disc parameters and new outer radius
- print "(/,2a,/)",'Most of the disc parameters are read from the *.discparams file.'
- call prompt('Enter the extension (e.g. [].discparams):',filename)
+ ! read the moddump parameters (or write a template and stop)
+ call get_options(trim(fileprefix)//'.moddump',id==master,ierr,&
+                  read_moddumpfile,write_moddumpfile,read_interactive_moddumpfile)
+ if (ierr /= 0) stop 'rerun phantommoddump with the new .moddump file'
 
- infile = trim(filename)//'.discparams'
+ infile = trim(disc_prefix)//'.discparams'
  inquire(file=trim(infile),exist=iexist)
  if (iexist) then
     print "(/,2a,/)",' Reading default values from ', trim(infile)
@@ -75,8 +79,6 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  else
     call fatal('moddump_extenddisc','Cannot find the *.discparams file, try again.')
  endif
-
- call prompt('Outer radius of new disc?',R_ext)
 
  R_c = 1.0
  R_match = 2./3.*R_out
@@ -217,5 +219,56 @@ subroutine modify_dump(npart,npartoftype,massoftype,xyzh,vxyzu)
  deallocate(xyzh_add,vxyzu_add)
 
 end subroutine modify_dump
+
+!
+!---Interactively set the moddump parameters--------------------------------
+!
+subroutine read_interactive_moddumpfile()
+ use prompting, only:prompt
+
+ print "(/,2a,/)",'Most of the disc parameters are read from the *.discparams file.'
+ call prompt('Enter the extension (e.g. [].discparams):',disc_prefix)
+ call prompt('Outer radius of new disc?',R_ext)
+
+end subroutine read_interactive_moddumpfile
+
+!
+!---Write the moddump parameter file----------------------------------------
+!
+subroutine write_moddumpfile(filename)
+ use infile_utils, only:write_inopt,write_moddump_header
+ character(len=*), intent(in) :: filename
+ integer, parameter :: iu = 24
+
+ print "(a)",' writing moddump params file '//trim(filename)
+ open(unit=iu,file=filename,status='replace',form='formatted')
+ call write_moddump_header(iu)
+ call write_inopt(disc_prefix,'disc_prefix','prefix of the .discparams file to read',iu)
+ call write_inopt(R_ext,'R_ext','outer radius of new (extended) disc',iu)
+ close(iu)
+
+end subroutine write_moddumpfile
+
+!
+!---Read the moddump parameter file-----------------------------------------
+!
+subroutine read_moddumpfile(filename,ierr)
+ use infile_utils, only:open_db_from_file,inopts,read_inopt,close_db
+ character(len=*), intent(in)  :: filename
+ integer,          intent(out) :: ierr
+ integer, parameter :: iu = 25
+ integer :: nerr
+ type(inopts), allocatable :: db(:)
+
+ print "(a)",' reading moddump options from '//trim(filename)
+ nerr = 0
+ call open_db_from_file(db,filename,iu,ierr)
+ if (ierr /= 0) return
+ call read_inopt(disc_prefix,'disc_prefix',db,errcount=nerr)
+ call read_inopt(R_ext,'R_ext',db,min=0.,errcount=nerr)
+ call close_db(db)
+ if (nerr > 0) ierr = nerr
+
+end subroutine read_moddumpfile
 
 end module moddump
